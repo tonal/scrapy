@@ -15,12 +15,9 @@ from collections import defaultdict
 from twisted.internet import defer, threads
 from PIL import Image
 
-from scrapy.xlib.pydispatch import dispatcher
 from scrapy import log
-from scrapy.stats import stats
 from scrapy.utils.misc import md5sum
 from scrapy.http import Request
-from scrapy import signals
 from scrapy.exceptions import DropItem, NotConfigured, IgnoreRequest
 from scrapy.contrib.pipeline.media import MediaPipeline
 
@@ -40,10 +37,6 @@ class FSImagesStore(object):
         self.basedir = basedir
         self._mkdir(self.basedir)
         self.created_directories = defaultdict(set)
-        dispatcher.connect(self.spider_closed, signals.spider_closed)
-
-    def spider_closed(self, spider):
-        self.created_directories.pop(spider.name, None)
 
     def persist_image(self, key, image, buf, info):
         absolute_path = self._get_filesystem_path(key)
@@ -184,26 +177,29 @@ class ImagesPipeline(MediaPipeline):
         referer = request.headers.get('Referer')
 
         if response.status != 200:
-            log.msg('Image (code: %s): Error downloading image from %s referred in <%s>' \
-                    % (response.status, request, referer), level=log.WARNING, spider=info.spider)
+            log.msg(format='Image (code: %(status)s): Error downloading image from %(request)s referred in <%(referer)s>',
+                    level=log.WARNING, spider=info.spider,
+                    status=response.status, request=request, referer=referer)
             raise ImageException
 
         if not response.body:
-            log.msg('Image (empty-content): Empty image from %s referred in <%s>: no-content' \
-                    % (request, referer), level=log.WARNING, spider=info.spider)
+            log.msg(format='Image (empty-content): Empty image from %(request)s referred in <%(referer)s>: no-content',
+                    level=log.WARNING, spider=info.spider,
+                    request=request, referer=referer)
             raise ImageException
 
         status = 'cached' if 'cached' in response.flags else 'downloaded'
-        msg = 'Image (%s): Downloaded image from %s referred in <%s>' % \
-                (status, request, referer)
-        log.msg(msg, level=log.DEBUG, spider=info.spider)
+        log.msg(format='Image (%(status)s): Downloaded image from %(request)s referred in <%(referer)s>',
+                level=log.DEBUG, spider=info.spider,
+                status=status, request=request, referer=referer)
         self.inc_stats(info.spider, status)
 
         try:
             key = self.image_key(request.url)
             checksum = self.image_downloaded(response, request, info)
         except ImageException, ex:
-            log.msg(str(ex), level=log.WARNING, spider=info.spider)
+            log.err('image_downloaded hook failed: %s' % ex,
+                    level=log.WARNING, spider=info.spider)
             raise
         except Exception:
             log.err(spider=info.spider)
@@ -214,9 +210,12 @@ class ImagesPipeline(MediaPipeline):
     def media_failed(self, failure, request, info):
         if not isinstance(failure.value, IgnoreRequest):
             referer = request.headers.get('Referer')
-            msg = 'Image (unknown-error): Error downloading %s from %s referred in <%s>: %s' \
-                    % (self.MEDIA_NAME, request, referer, str(failure))
-            log.msg(msg, level=log.WARNING, spider=info.spider)
+            log.msg(format='Image (unknown-error): Error downloading '
+                           '%(medianame)s from %(request)s referred in '
+                           '<%(referer)s>: %(exception)s',
+                    level=log.WARNING, spider=info.spider, exception=failure.value,
+                    medianame=self.MEDIA_NAME, request=request, referer=referer)
+
         raise ImageException
 
     def media_to_download(self, request, info):
@@ -234,8 +233,9 @@ class ImagesPipeline(MediaPipeline):
                 return # returning None force download
 
             referer = request.headers.get('Referer')
-            log.msg('Image (uptodate): Downloaded %s from <%s> referred in <%s>' % \
-                    (self.MEDIA_NAME, request.url, referer), level=log.DEBUG, spider=info.spider)
+            log.msg(format='Image (uptodate): Downloaded %(medianame)s from %(request)s referred in <%(referer)s>',
+                    level=log.DEBUG, spider=info.spider,
+                    medianame=self.MEDIA_NAME, request=request, referer=referer)
             self.inc_stats(info.spider, 'uptodate')
 
             checksum = result.get('checksum', None)
@@ -274,8 +274,8 @@ class ImagesPipeline(MediaPipeline):
             yield thumb_key, thumb_image, thumb_buf
 
     def inc_stats(self, spider, status):
-        stats.inc_value('image_count', spider=spider)
-        stats.inc_value('image_status_count/%s' % status, spider=spider)
+        spider.crawler.stats.inc_value('image_count', spider=spider)
+        spider.crawler.stats.inc_value('image_status_count/%s' % status, spider=spider)
 
     def convert_image(self, image, size=None):
         if image.format == 'PNG' and image.mode == 'RGBA':

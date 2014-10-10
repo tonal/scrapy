@@ -3,15 +3,21 @@ Mail sending helpers
 
 See documentation in docs/topics/email.rst
 """
-from cStringIO import StringIO
-from email.MIMEMultipart import MIMEMultipart
-from email.MIMENonMultipart import MIMENonMultipart
-from email.MIMEBase import MIMEBase
-from email.MIMEText import MIMEText
-from email.Utils import COMMASPACE, formatdate
-from email import Encoders
+from six.moves import cStringIO as StringIO
+import six
 
-from twisted.internet import defer, reactor
+from email.utils import COMMASPACE, formatdate
+from six.moves.email_mime_multipart import MIMEMultipart
+from six.moves.email_mime_text import MIMEText
+from six.moves.email_mime_base import MIMEBase
+if six.PY2:
+    from email.MIMENonMultipart import MIMENonMultipart
+    from email import Encoders
+else:
+    from email.mime.nonmultipart import MIMENonMultipart
+    from email import encoders as Encoders
+
+from twisted.internet import defer, reactor, ssl
 from twisted.mail.smtp import ESMTPSenderFactory
 
 from scrapy import log
@@ -19,24 +25,27 @@ from scrapy import log
 class MailSender(object):
 
     def __init__(self, smtphost='localhost', mailfrom='scrapy@localhost',
-            smtpuser=None, smtppass=None, smtpport=25, debug=False):
+            smtpuser=None, smtppass=None, smtpport=25, smtptls=False, smtpssl=False, debug=False):
         self.smtphost = smtphost
         self.smtpport = smtpport
         self.smtpuser = smtpuser
         self.smtppass = smtppass
+        self.smtptls = smtptls
+        self.smtpssl = smtpssl
         self.mailfrom = mailfrom
         self.debug = debug
 
     @classmethod
     def from_settings(cls, settings):
         return cls(settings['MAIL_HOST'], settings['MAIL_FROM'], settings['MAIL_USER'],
-            settings['MAIL_PASS'], settings.getint('MAIL_PORT'))
+            settings['MAIL_PASS'], settings.getint('MAIL_PORT'),
+            settings.getbool('MAIL_TLS'), settings.getbool('MAIL_SSL'))
 
-    def send(self, to, subject, body, cc=None, attachs=(), _callback=None):
+    def send(self, to, subject, body, cc=None, attachs=(), mimetype='text/plain', _callback=None):
         if attachs:
             msg = MIMEMultipart()
         else:
-            msg = MIMENonMultipart('text', 'plain')
+            msg = MIMENonMultipart(*mimetype.split('/', 1))
         msg['From'] = self.mailfrom
         msg['To'] = COMMASPACE.join(to)
         msg['Date'] = formatdate(localtime=True)
@@ -91,7 +100,12 @@ class MailSender(object):
         d = defer.Deferred()
         factory = ESMTPSenderFactory(self.smtpuser, self.smtppass, self.mailfrom, \
             to_addrs, msg, d, heloFallback=True, requireAuthentication=False, \
-            requireTransportSecurity=False)
+            requireTransportSecurity=self.smtptls)
         factory.noisy = False
-        reactor.connectTCP(self.smtphost, self.smtpport, factory)
+
+        if self.smtpssl:
+            reactor.connectSSL(self.smtphost, self.smtpport, factory, ssl.ClientContextFactory())
+        else:
+            reactor.connectTCP(self.smtphost, self.smtpport, factory)
+
         return d

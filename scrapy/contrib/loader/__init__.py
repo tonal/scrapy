@@ -1,26 +1,34 @@
-"""
-Item Loader
+"""Item Loader
 
 See documentation in docs/topics/loaders.rst
-"""
 
+"""
 from collections import defaultdict
-import re
+import six
 
 from scrapy.item import Item
-from scrapy.selector import HtmlXPathSelector
+from scrapy.selector import Selector
+from scrapy.utils.decorator import deprecated
+from scrapy.utils.deprecate import create_deprecated_class
 from scrapy.utils.misc import arg_to_iter, extract_regex
 from scrapy.utils.python import flatten
+
 from .common import wrap_loader_context
 from .processor import Identity
+
 
 class ItemLoader(object):
 
     default_item_class = Item
     default_input_processor = Identity()
     default_output_processor = Identity()
+    default_selector_class = Selector
 
-    def __init__(self, item=None, **context):
+    def __init__(self, item=None, selector=None, response=None, **context):
+        if selector is None and response is not None:
+            selector = self.default_selector_class(response)
+        self.selector = selector
+        context.update(selector=selector, response=response)
         if item is None:
             item = self.default_item_class()
         self.item = context['item'] = item
@@ -32,7 +40,7 @@ class ItemLoader(object):
         if value is None:
             return
         if not field_name:
-            for k,v in value.iteritems():
+            for k, v in six.iteritems(value):
                 self._add_value(k, v)
         else:
             self._add_value(field_name, value)
@@ -42,7 +50,7 @@ class ItemLoader(object):
         if value is None:
             return
         if not field_name:
-            for k,v in value.iteritems():
+            for k, v in six.iteritems(value):
                 self._replace_value(k, v)
         else:
             self._replace_value(field_name, value)
@@ -73,7 +81,9 @@ class ItemLoader(object):
     def load_item(self):
         item = self.item
         for field_name in self._values:
-            item[field_name] = self.get_output_value(field_name)
+            value = self.get_output_value(field_name)
+            if value is not None:
+                item[field_name] = value
         return item
 
     def get_output_value(self, field_name):
@@ -81,7 +91,7 @@ class ItemLoader(object):
         proc = wrap_loader_context(proc, self.context)
         try:
             return proc(self._values[field_name])
-        except Exception, e:
+        except Exception as e:
             raise ValueError("Error with output processor: field=%r value=%r error='%s: %s'" % \
                 (field_name, self._values[field_name], type(e).__name__, str(e)))
 
@@ -114,33 +124,49 @@ class ItemLoader(object):
             value = default
         return value
 
-class XPathItemLoader(ItemLoader):
-
-    default_selector_class = HtmlXPathSelector
-
-    def __init__(self, item=None, selector=None, response=None, **context):
-        if selector is None and response is None:
-            raise RuntimeError("%s must be instantiated with a selector " \
-                "or response" % self.__class__.__name__)
-        if selector is None:
-            selector = self.default_selector_class(response)
-        self.selector = selector
-        context.update(selector=selector, response=response)
-        super(XPathItemLoader, self).__init__(item, **context)
+    def _check_selector_method(self):
+        if self.selector is None:
+            raise RuntimeError("To use XPath or CSS selectors, "
+                "%s must be instantiated with a selector "
+                "or a response" % self.__class__.__name__)
 
     def add_xpath(self, field_name, xpath, *processors, **kw):
-        values = self._get_values(xpath, **kw)
+        values = self._get_xpathvalues(xpath, **kw)
         self.add_value(field_name, values, *processors, **kw)
 
     def replace_xpath(self, field_name, xpath, *processors, **kw):
-        values = self._get_values(xpath, **kw)
+        values = self._get_xpathvalues(xpath, **kw)
         self.replace_value(field_name, values, *processors, **kw)
 
     def get_xpath(self, xpath, *processors, **kw):
-        values = self._get_values(xpath, **kw)
+        values = self._get_xpathvalues(xpath, **kw)
         return self.get_value(values, *processors, **kw)
 
+    @deprecated(use_instead='._get_xpathvalues()')
     def _get_values(self, xpaths, **kw):
-        xpaths = arg_to_iter(xpaths)
-        return flatten([self.selector.select(xpath).extract() for xpath in xpaths])
+        return self._get_xpathvalues(xpaths, **kw)
 
+    def _get_xpathvalues(self, xpaths, **kw):
+        self._check_selector_method()
+        xpaths = arg_to_iter(xpaths)
+        return flatten([self.selector.xpath(xpath).extract() for xpath in xpaths])
+
+    def add_css(self, field_name, css, *processors, **kw):
+        values = self._get_cssvalues(css, **kw)
+        self.add_value(field_name, values, *processors, **kw)
+
+    def replace_css(self, field_name, css, *processors, **kw):
+        values = self._get_cssvalues(css, **kw)
+        self.replace_value(field_name, values, *processors, **kw)
+
+    def get_css(self, css, *processors, **kw):
+        values = self._get_cssvalues(css, **kw)
+        return self.get_value(values, *processors, **kw)
+
+    def _get_cssvalues(self, csss, **kw):
+        self._check_selector_method()
+        csss = arg_to_iter(csss)
+        return flatten([self.selector.css(css).extract() for css in csss])
+
+
+XPathItemLoader = create_deprecated_class('XPathItemLoader', ItemLoader)

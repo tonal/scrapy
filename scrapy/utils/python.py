@@ -10,23 +10,8 @@ import re
 import inspect
 import weakref
 import errno
-from functools import wraps
-from sgmllib import SGMLParser
-
-
-class FixedSGMLParser(SGMLParser):
-    """The SGMLParser that comes with Python has a bug in the convert_charref()
-    method. This is the same class with the bug fixed"""
-
-    def convert_charref(self, name):
-        """This method fixes a bug in Python's SGMLParser."""
-        try:
-            n = int(name)
-        except ValueError:
-            return
-        if not 0 <= n <= 127 : # ASCII ends at 127, not 255
-            return
-        return self.convert_codepoint(n)
+import six
+from functools import partial, wraps
 
 
 def flatten(x):
@@ -53,13 +38,13 @@ def flatten(x):
 
 def unique(list_, key=lambda x: x):
     """efficient function to uniquify a list preserving item order"""
-    seen = {}
+    seen = set()
     result = []
     for item in list_:
         seenkey = key(item)
-        if seenkey in seen: 
+        if seenkey in seen:
             continue
-        seen[seenkey] = 1
+        seen.add(seenkey)
         result.append(item)
     return result
 
@@ -70,7 +55,7 @@ def str_to_unicode(text, encoding=None, errors='strict'):
     object without the risk of double-decoding problems (which can happen if
     you don't use the default 'ascii' encoding)
     """
-    
+
     if encoding is None:
         encoding = 'utf-8'
     if isinstance(text, str):
@@ -156,8 +141,13 @@ def get_func_args(func, stripself=False):
         return get_func_args(func.__func__, True)
     elif inspect.ismethoddescriptor(func):
         return []
+    elif isinstance(func, partial):
+        return [x for x in get_func_args(func.func)[len(func.args):]
+                if not (func.keywords and x in func.keywords)]
     elif hasattr(func, '__call__'):
         if inspect.isroutine(func):
+            return []
+        elif getattr(func, '__name__', None) == '__call__':
             return []
         else:
             return get_func_args(func.__call__, True)
@@ -245,7 +235,7 @@ def stringify_dict(dct_or_tuples, encoding='utf-8', keys_only=True):
     dict or a list of tuples, like any dict constructor supports.
     """
     d = {}
-    for k, v in dict(dct_or_tuples).iteritems():
+    for k, v in six.iteritems(dict(dct_or_tuples)):
         k = k.encode(encoding) if isinstance(k, unicode) else k
         if not keys_only:
             v = v.encode(encoding) if isinstance(v, unicode) else v
@@ -274,6 +264,6 @@ def retry_on_eintr(function, *args, **kw):
     while True:
         try:
             return function(*args, **kw)
-        except IOError, e:
+        except IOError as e:
             if e.errno != errno.EINTR:
                 raise

@@ -1,10 +1,10 @@
+from __future__ import print_function
 from w3lib.url import is_url
 
 from scrapy.command import ScrapyCommand
 from scrapy.http import Request
-from scrapy.spider import BaseSpider
 from scrapy.exceptions import UsageError
-from scrapy.utils.spider import create_spider_for_request
+from scrapy.utils.spider import spidercls_for_request, DefaultSpider
 
 class Command(ScrapyCommand):
 
@@ -30,15 +30,15 @@ class Command(ScrapyCommand):
     def _print_headers(self, headers, prefix):
         for key, values in headers.items():
             for value in values:
-                print '%s %s: %s' % (prefix, key, value)
+                print('%s %s: %s' % (prefix, key, value))
 
     def _print_response(self, response, opts):
         if opts.headers:
             self._print_headers(response.request.headers, '>')
-            print '>'
+            print('>')
             self._print_headers(response.headers, '<')
         else:
-            print response.body
+            print(response.body)
 
     def run(self, args, opts):
         if len(args) != 1 or not is_url(args[0]):
@@ -47,12 +47,11 @@ class Command(ScrapyCommand):
         request = Request(args[0], callback=cb, dont_filter=True)
         request.meta['handle_httpstatus_all'] = True
 
-        spider = None
+        spidercls = DefaultSpider
+        spiders = self.crawler_process.spiders
         if opts.spider:
-            spider = self.crawler.spiders.create(opts.spider)
+            spidercls = spiders.load(opts.spider)
         else:
-            spider = create_spider_for_request(self.crawler.spiders, request, \
-                default_spider=BaseSpider('default'))
-        self.crawler.crawl(spider, [request])
-        self.crawler.start()
-
+            spidercls = spidercls_for_request(spiders, request, spidercls)
+        self.crawler_process.crawl(spidercls, start_requests=lambda: [request])
+        self.crawler_process.start()

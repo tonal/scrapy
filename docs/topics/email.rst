@@ -15,7 +15,7 @@ simple API for sending attachments and it's very easy to configure, with a few
 :ref:`settings <topics-email-settings>`.
 
 .. _smtplib: http://docs.python.org/library/smtplib.html
-.. _Twisted non-blocking IO: http://twistedmatrix.com/projects/core/documentation/howto/async.html
+.. _Twisted non-blocking IO: http://twistedmatrix.com/documents/current/core/howto/defer-intro.html
 
 Quick example
 =============
@@ -39,11 +39,11 @@ MailSender class reference
 ==========================
 
 MailSender is the preferred class to use for sending emails from Scrapy, as it
-uses `Twisted non-blocking IO`_, like the rest of the framework. 
+uses `Twisted non-blocking IO`_, like the rest of the framework.
 
 .. class:: MailSender(smtphost=None, mailfrom=None, smtpuser=None, smtppass=None, smtpport=None)
 
-    :param smtphost: the SMTP host to use for sending the emails. If omitted, the 
+    :param smtphost: the SMTP host to use for sending the emails. If omitted, the
       :setting:`MAIL_HOST` setting will be used.
     :type smtphost: str
 
@@ -62,6 +62,12 @@ uses `Twisted non-blocking IO`_, like the rest of the framework.
     :param smtpport: the SMTP port to connect to
     :type smtpport: int
 
+    :param smtptls: enforce using SMTP STARTTLS
+    :type smtpport: boolean
+
+    :param smtpssl: enforce using a secure SSL connection
+    :type smtpport: boolean
+
     .. classmethod:: from_settings(settings)
 
         Instantiate using a Scrapy settings object, which will respect
@@ -70,7 +76,7 @@ uses `Twisted non-blocking IO`_, like the rest of the framework.
         :param settings: the e-mail recipients
         :type settings: :class:`scrapy.settings.Settings` object
 
-    .. method:: send(to, subject, body, cc=None, attachs=())
+    .. method:: send(to, subject, body, cc=None, attachs=(), mimetype='text/plain')
 
         Send email to the given recipients.
 
@@ -92,6 +98,9 @@ uses `Twisted non-blocking IO`_, like the rest of the framework.
           attachment and ``file_object`` is a readable file object with the
           contents of the attachment
         :type attachs: iterable
+
+        :param mimetype: the MIME type of the e-mail
+        :type mimetype: str
 
 
 .. _topics-email-settings:
@@ -148,3 +157,21 @@ MAIL_PASS
 Default: ``None``
 
 Password to use for SMTP authentication, along with :setting:`MAIL_USER`.
+
+.. setting:: MAIL_TLS
+
+MAIL_TLS
+---------
+
+Default: ``False``
+
+Enforce using STARTTLS. STARTTLS is a way to take an existing insecure connection, and upgrade it to a secure connection using SSL/TLS.
+
+.. setting:: MAIL_SSL
+
+MAIL_SSL
+---------
+
+Default: ``False``
+
+Enforce connecting using an SSL encrypted connection

@@ -42,7 +42,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Scrapy'
-copyright = u'2008-2012, Scrapinghub'
+copyright = u'2008-2013, Scrapy developers'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -173,7 +173,7 @@ htmlhelp_basename = 'Scrapydoc'
 # (source start file, target name, title, author, document class [howto/manual]).
 latex_documents = [
   ('index', 'Scrapy.tex', ur'Scrapy Documentation',
-   ur'Scrapinghub', 'manual'),
+   ur'Scrapy developers', 'manual'),
 ]
 
 # The name of an image file (relative to this directory) to place at the top of
@@ -192,3 +192,14 @@ latex_documents = [
 
 # If false, no module index is generated.
 #latex_use_modindex = True
+
+
+# Options for the linkcheck builder
+# ---------------------------------
+
+# A list of regular expressions that match URIs that should not be checked when
+# doing a linkcheck build.
+linkcheck_ignore = [
+    'http://localhost:\d+', 'http://hg.scrapy.org',
+    'http://directory.google.com/'
+]

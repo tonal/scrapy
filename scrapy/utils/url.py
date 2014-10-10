@@ -5,32 +5,37 @@ library.
 Some of the functions that used to be imported from this module have been moved
 to the w3lib.url module. Always import those from there instead.
 """
-
-import urlparse
+import posixpath
+from six.moves.urllib.parse import (ParseResult, urlunparse, urldefrag,
+                                    urlparse, parse_qsl)
 import urllib
-import cgi
 
+# scrapy.utils.url was moved to w3lib.url and import * ensures this move doesn't break old code
 from w3lib.url import *
 from scrapy.utils.python import unicode_to_str
 
+
 def url_is_from_any_domain(url, domains):
     """Return True if the url belongs to any of the given domains"""
-    host = parse_url(url).netloc
+    host = parse_url(url).netloc.lower()
 
     if host:
-        return any(((host == d) or (host.endswith('.%s' % d)) for d in domains))
+        return any(((host == d.lower()) or (host.endswith('.%s' % d.lower())) for d in domains))
     else:
         return False
 
+
 def url_is_from_spider(url, spider):
     """Return True if the url belongs to the given spider"""
-    return url_is_from_any_domain(url, [spider.name] + \
-        getattr(spider, 'allowed_domains', []))
+    return url_is_from_any_domain(url,
+        [spider.name] + list(getattr(spider, 'allowed_domains', [])))
+
 
 def url_has_any_extension(url, extensions):
     return posixpath.splitext(parse_url(url).path)[1].lower() in extensions
 
-def canonicalize_url(url, keep_blank_values=True, keep_fragments=False, \
+
+def canonicalize_url(url, keep_blank_values=True, keep_fragments=False,
         encoding=None):
     """Canonicalize the given url by applying the following procedures:
 
@@ -45,16 +50,16 @@ def canonicalize_url(url, keep_blank_values=True, keep_fragments=False, \
     The url passed can be a str or unicode, while the url returned is always a
     str.
 
-    For examples see the tests in scrapy.tests.test_utils_url
+    For examples see the tests in tests/test_utils_url.py
     """
 
     scheme, netloc, path, params, query, fragment = parse_url(url)
-    keyvals = cgi.parse_qsl(query, keep_blank_values)
+    keyvals = parse_qsl(query, keep_blank_values)
     keyvals.sort()
     query = urllib.urlencode(keyvals)
     path = safe_url_string(_unquotepath(path)) or '/'
     fragment = '' if not keep_fragments else fragment
-    return urlparse.urlunparse((scheme, netloc.lower(), path, params, query, fragment))
+    return urlunparse((scheme, netloc.lower(), path, params, query, fragment))
 
 
 def _unquotepath(path):
@@ -67,17 +72,34 @@ def parse_url(url, encoding=None):
     """Return urlparsed url from the given argument (which could be an already
     parsed url)
     """
-    return url if isinstance(url, urlparse.ParseResult) else \
-        urlparse.urlparse(unicode_to_str(url, encoding))
+    return url if isinstance(url, ParseResult) else \
+        urlparse(unicode_to_str(url, encoding))
+
 
 def escape_ajax(url):
     """
     Return the crawleable url according to:
     http://code.google.com/web/ajaxcrawling/docs/getting-started.html
 
-    TODO: add support for urls with query arguments
-
     >>> escape_ajax("www.example.com/ajax.html#!key=value")
-    'www.example.com/ajax.html?_escaped_fragment_=key=value'
+    'www.example.com/ajax.html?_escaped_fragment_=key%3Dvalue'
+    >>> escape_ajax("www.example.com/ajax.html?k1=v1&k2=v2#!key=value")
+    'www.example.com/ajax.html?k1=v1&k2=v2&_escaped_fragment_=key%3Dvalue'
+    >>> escape_ajax("www.example.com/ajax.html?#!key=value")
+    'www.example.com/ajax.html?_escaped_fragment_=key%3Dvalue'
+    >>> escape_ajax("www.example.com/ajax.html#!")
+    'www.example.com/ajax.html?_escaped_fragment_='
+
+    URLs that are not "AJAX crawlable" (according to Google) returned as-is:
+
+    >>> escape_ajax("www.example.com/ajax.html#key=value")
+    'www.example.com/ajax.html#key=value'
+    >>> escape_ajax("www.example.com/ajax.html#")
+    'www.example.com/ajax.html#'
+    >>> escape_ajax("www.example.com/ajax.html")
+    'www.example.com/ajax.html'
     """
-    return url.replace('#!', '?_escaped_fragment_=')
+    defrag, frag = urldefrag(url)
+    if not frag.startswith('!'):
+        return url
+    return add_or_replace_parameter(defrag, '_escaped_fragment_', frag[1:])

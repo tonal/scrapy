@@ -1,3 +1,4 @@
+from __future__ import print_function
 import sys
 import os
 import glob
@@ -7,7 +8,7 @@ import time
 import urllib2
 import netrc
 import json
-from urlparse import urlparse, urljoin
+from six.moves.urllib.parse import urlparse, urljoin
 from subprocess import Popen, PIPE, check_call
 
 from w3lib.form import encode_multipart
@@ -53,6 +54,8 @@ class Command(ScrapyCommand):
             help="the version to deploy. Defaults to current timestamp")
         parser.add_option("-l", "--list-targets", action="store_true", \
             help="list available targets")
+        parser.add_option("-d", "--debug", action="store_true",
+            help="debug mode (do not remove build dir)")
         parser.add_option("-L", "--list-projects", metavar="TARGET", \
             help="list available projects on TARGET")
         parser.add_option("--egg", metavar="FILE",
@@ -65,17 +68,21 @@ class Command(ScrapyCommand):
             import setuptools
         except ImportError:
             raise UsageError("setuptools not installed")
+
+        urllib2.install_opener(urllib2.build_opener(HTTPRedirectHandler))
+
         if opts.list_targets:
             for name, target in _get_targets().items():
-                print "%-20s %s" % (name, target['url'])
+                print("%-20s %s" % (name, target['url']))
             return
+
         if opts.list_projects:
             target = _get_target(opts.list_projects)
             req = urllib2.Request(_url(target, 'listprojects.json'))
             _add_auth_header(req, target)
             f = urllib2.urlopen(req)
             projects = json.loads(f.read())['projects']
-            print os.linesep.join(projects)
+            print(os.linesep.join(projects))
             return
 
         tmpdir = None
@@ -93,12 +100,16 @@ class Command(ScrapyCommand):
                 _log("Using egg: %s" % opts.egg)
                 egg = opts.egg
             else:
-                _log("Building egg of %s-%s" % (project, version))
+                _log("Packing version %s" % version)
                 egg, tmpdir = _build_egg()
-            _upload_egg(target, egg, project, version)
+            if not _upload_egg(target, egg, project, version):
+                self.exitcode = 1
 
         if tmpdir:
-            shutil.rmtree(tmpdir)
+            if opts.debug:
+                _log("Output dir not removed: %s" % tmpdir)
+            else:
+                shutil.rmtree(tmpdir)
 
 def _log(message):
     sys.stderr.write(message + os.linesep)
@@ -148,10 +159,16 @@ def _get_version(target, opts):
     version = opts.version or target.get('version')
     if version == 'HG':
         p = Popen(['hg', 'tip', '--template', '{rev}'], stdout=PIPE)
-        return 'r%s' % p.communicate()[0]
+        d = 'r%s' % p.communicate()[0]
+        p = Popen(['hg', 'branch'], stdout=PIPE)
+        b = p.communicate()[0].strip('\n')
+        return '%s-%s' % (d, b)
     elif version == 'GIT':
         p = Popen(['git', 'describe', '--always'], stdout=PIPE)
-        return '%s' % p.communicate()[0].strip('\n')
+        d = p.communicate()[0].strip('\n')
+        p = Popen(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], stdout=PIPE)
+        b = p.communicate()[0].strip('\n')
+        return '%s-%s' % (d, b)
     elif version:
         return version
     else:
@@ -173,8 +190,8 @@ def _upload_egg(target, eggpath, project, version):
     }
     req = urllib2.Request(url, body, headers)
     _add_auth_header(req, target)
-    _log("Deploying %s-%s to %s" % (project, version, url))
-    _http_post(req)
+    _log('Deploying to project "%s" in %s' % (project, url))
+    return _http_post(req)
 
 def _add_auth_header(request, target):
     if 'username' in target:
@@ -192,11 +209,12 @@ def _http_post(request):
     try:
         f = urllib2.urlopen(request)
         _log("Server response (%s):" % f.code)
-        print f.read()
-    except urllib2.HTTPError, e:
+        print(f.read())
+        return True
+    except urllib2.HTTPError as e:
         _log("Deploy failed (%s):" % e.code)
-        print e.read()
-    except urllib2.URLError, e:
+        print(e.read())
+    except urllib2.URLError as e:
         _log("Deploy failed: %s" % e)
 
 def _build_egg():
@@ -205,12 +223,36 @@ def _build_egg():
     if not os.path.exists('setup.py'):
         settings = get_config().get('settings', 'default')
         _create_default_setup_py(settings=settings)
-    d = tempfile.mkdtemp()
-    f = tempfile.TemporaryFile(dir=d)
-    retry_on_eintr(check_call, [sys.executable, 'setup.py', 'clean', '-a', 'bdist_egg', '-d', d], stdout=f)
+    d = tempfile.mkdtemp(prefix="scrapydeploy-")
+    o = open(os.path.join(d, "stdout"), "wb")
+    e = open(os.path.join(d, "stderr"), "wb")
+    retry_on_eintr(check_call, [sys.executable, 'setup.py', 'clean', '-a', 'bdist_egg', '-d', d], stdout=o, stderr=e)
+    o.close()
+    e.close()
     egg = glob.glob(os.path.join(d, '*.egg'))[0]
     return egg, d
 
 def _create_default_setup_py(**kwargs):
     with open('setup.py', 'w') as f:
         f.write(_SETUP_PY_TEMPLATE % kwargs)
+
+
+class HTTPRedirectHandler(urllib2.HTTPRedirectHandler):
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        newurl = newurl.replace(' ', '%20')
+        if code in (301, 307):
+            return urllib2.Request(newurl,
+                                   data=req.get_data(),
+                                   headers=req.headers,
+                                   origin_req_host=req.get_origin_req_host(),
+                                   unverifiable=True)
+        elif code in (302, 303):
+            newheaders = dict((k, v) for k, v in req.headers.items()
+                              if k.lower() not in ("content-length", "content-type"))
+            return urllib2.Request(newurl,
+                                   headers=newheaders,
+                                   origin_req_host=req.get_origin_req_host(),
+                                   unverifiable=True)
+        else:
+            raise urllib2.HTTPError(req.get_full_url(), code, msg, headers, fp)

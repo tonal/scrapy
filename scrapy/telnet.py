@@ -34,7 +34,7 @@ class TelnetConsole(protocol.ServerFactory):
             raise NotConfigured
         self.crawler = crawler
         self.noisy = False
-        self.portrange = map(int, crawler.settings.getlist('TELNETCONSOLE_PORT'))
+        self.portrange = [int(x) for x in crawler.settings.getlist('TELNETCONSOLE_PORT')]
         self.host = crawler.settings['TELNETCONSOLE_HOST']
         self.crawler.signals.connect(self.start_listening, signals.engine_started)
         self.crawler.signals.connect(self.stop_listening, signals.engine_stopped)
@@ -59,14 +59,11 @@ class TelnetConsole(protocol.ServerFactory):
 
     def _get_telnet_vars(self):
         # Note: if you add entries here also update topics/telnetconsole.rst
-        slots = self.crawler.engine.slots
-        if len(slots) == 1:
-            spider, slot = slots.items()[0]
         telnet_vars = {
             'engine': self.crawler.engine,
-            'spider': spider,
-            'slot': slot,
-            'manager': self.crawler,
+            'spider': self.crawler.engine.spider,
+            'slot': self.crawler.engine.slot,
+            'crawler': self.crawler,
             'extensions': self.crawler.extensions,
             'stats': self.crawler.stats,
             'spiders': self.crawler.spiders,

@@ -7,10 +7,10 @@ See documentation in docs/topics/feed-exports.rst
 import sys, os, posixpath
 from tempfile import TemporaryFile
 from datetime import datetime
-from urlparse import urlparse
+from six.moves.urllib.parse import urlparse
 from ftplib import FTP
 
-from zope.interface import Interface, implements
+from zope.interface import Interface, implementer
 from twisted.internet import defer, threads
 from w3lib.url import file_uri_to_path
 
@@ -35,9 +35,8 @@ class IFeedStorage(Interface):
         """Store the given file stream"""
 
 
+@implementer(IFeedStorage)
 class BlockingFeedStorage(object):
-
-    implements(IFeedStorage)
 
     def open(self, spider):
         return TemporaryFile(prefix='feed-')
@@ -49,9 +48,8 @@ class BlockingFeedStorage(object):
         raise NotImplementedError
 
 
+@implementer(IFeedStorage)
 class StdoutFeedStorage(object):
-
-    implements(IFeedStorage)
 
     def __init__(self, uri, _stdout=sys.stdout):
         self._stdout = _stdout
@@ -62,9 +60,9 @@ class StdoutFeedStorage(object):
     def store(self, file):
         pass
 
-class FileFeedStorage(object):
 
-    implements(IFeedStorage)
+@implementer(IFeedStorage)
+class FileFeedStorage(object):
 
     def __init__(self, uri):
         self.path = file_uri_to_path(uri)
@@ -77,6 +75,7 @@ class FileFeedStorage(object):
 
     def store(self, file):
         file.close()
+
 
 class S3FeedStorage(BlockingFeedStorage):
 
@@ -131,6 +130,7 @@ class SpiderSlot(object):
         self.uri = uri
         self.itemcount = 0
 
+
 class FeedExporter(object):
 
     def __init__(self, settings):
@@ -148,7 +148,6 @@ class FeedExporter(object):
         self.store_empty = settings.getbool('FEED_STORE_EMPTY')
         uripar = settings['FEED_URI_PARAMS']
         self._uripar = load_object(uripar) if uripar else lambda x, y: None
-        self.slots = {}
 
     @classmethod
     def from_crawler(cls, crawler):
@@ -172,10 +171,10 @@ class FeedExporter(object):
         file = storage.open(spider)
         exporter = self._get_exporter(file)
         exporter.start_exporting()
-        self.slots[spider] = SpiderSlot(file, exporter, storage, uri)
+        self.slot = SpiderSlot(file, exporter, storage, uri)
 
     def close_spider(self, spider):
-        slot = self.slots.pop(spider)
+        slot = self.slot
         if not slot.itemcount and not self.store_empty:
             return
         slot.exporter.finish_exporting()
@@ -187,7 +186,7 @@ class FeedExporter(object):
         return d
 
     def item_scraped(self, item, spider):
-        slot = self.slots[spider]
+        slot = self.slot
         slot.exporter.export_item(item)
         slot.itemcount += 1
         return item

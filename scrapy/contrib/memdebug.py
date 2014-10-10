@@ -5,19 +5,16 @@ See documentation in docs/topics/extensions.rst
 """
 
 import gc
+import six
 
 from scrapy import signals
 from scrapy.exceptions import NotConfigured
 from scrapy.utils.trackref import live_refs
 
+
 class MemoryDebugger(object):
 
     def __init__(self, stats):
-        try:
-            import libxml2
-            self.libxml2 = libxml2
-        except ImportError:
-            self.libxml2 = None
         self.stats = stats
 
     @classmethod
@@ -25,21 +22,13 @@ class MemoryDebugger(object):
         if not crawler.settings.getbool('MEMDEBUG_ENABLED'):
             raise NotConfigured
         o = cls(crawler.stats)
-        crawler.signals.connect(o.engine_started, signals.engine_started)
-        crawler.signals.connect(o.engine_stopped, signals.engine_stopped)
+        crawler.signals.connect(o.spider_closed, signal=signals.spider_closed)
         return o
 
-    def engine_started(self):
-        if self.libxml2:
-            self.libxml2.debugMemory(1)
-
-    def engine_stopped(self):
-        if self.libxml2:
-            self.libxml2.cleanupParser()
-            self.stats.set_value('memdebug/libxml2_leaked_bytes', self.libxml2.debugMemory(1))
+    def spider_closed(self, spider, reason):
         gc.collect()
-        self.stats.set_value('memdebug/gc_garbage_count', len(gc.garbage))
-        for cls, wdict in live_refs.iteritems():
+        self.stats.set_value('memdebug/gc_garbage_count', len(gc.garbage), spider=spider)
+        for cls, wdict in six.iteritems(live_refs):
             if not wdict:
                 continue
-            self.stats.set_value('memdebug/live_refs/%s' % cls.__name__, len(wdict))
+            self.stats.set_value('memdebug/live_refs/%s' % cls.__name__, len(wdict), spider=spider)

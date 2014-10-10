@@ -10,7 +10,11 @@ logging`_ but this may change in the future.
 
 .. _Twisted logging: http://twistedmatrix.com/projects/core/documentation/howto/logging.html
 
-The logging service must be explicitly started through the :func:`scrapy.log.start` function.
+The logging service must be explicitly started through the
+:func:`scrapy.log.start` function to catch the top level Scrapy's log messages.
+On top of that, each crawler has its own independent log observer
+(automatically attached when it's created) that intercepts its spider's log
+messages.
 
 .. _topics-logging-levels:
 
@@ -43,7 +47,7 @@ Logging from Spiders
 ====================
 
 The recommended way to log from spiders is by using the Spider
-:meth:`~scrapy.spider.BaseSpider.log` method, which already populates the
+:meth:`~scrapy.spider.Spider.log` method, which already populates the
 ``spider`` argument of the :func:`scrapy.log.msg` function. The other arguments
 are passed directly to the :func:`~scrapy.log.msg` function.
 
@@ -55,8 +59,11 @@ scrapy.log module
 
 .. function:: start(logfile=None, loglevel=None, logstdout=None)
 
-    Start the logging facility. This must be called before actually logging any
-    messages. Otherwise, messages logged before this call will get lost.
+    Start the top level Scrapy logger. This must be called before actually
+    logging any top level messages (those logged using this module's
+    :func:`~scrapy.log.msg` function instead of the :meth:`Spider.log
+    <scrapy.spider.Spider.log>` method). Otherwise, messages logged before this
+    call will get lost.
 
     :param logfile: the file path to use for logging output. If omitted, the
         :setting:`LOG_FILE` setting will be used. If both are ``None``, the log
@@ -83,10 +90,10 @@ scrapy.log module
     :param level: the log level for this message. See
         :ref:`topics-logging-levels`.
 
-    :param spider: the spider to use for logging this message. This parameter 
+    :param spider: the spider to use for logging this message. This parameter
         should always be used when logging things related to a particular
         spider.
-    :type spider: :class:`~scrapy.spider.BaseSpider` object
+    :type spider: :class:`~scrapy.spider.Spider` object
 
 .. data:: CRITICAL
 

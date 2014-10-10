@@ -35,37 +35,46 @@ Settings can be populated using different mechanisms, each of which having a
 different precedence. Here is the list of them in decreasing order of
 precedence:
 
- 1. Global overrides (most precedence)
- 2. Project settings module
- 3. Default settings per-command
- 4. Default global settings (less precedence)
+ 1. Command line options (most precedence)
+ 2. Settings per-spider
+ 3. Project settings module
+ 4. Default settings per-command
+ 5. Default global settings (less precedence)
+
+The population of these settings sources is taken care of internally, but a
+manual handling is possible using API calls. See the
+:ref:`topics-api-settings` topic for reference.
 
 These mechanisms are described in more detail below.
 
-1. Global overrides
--------------------
+1. Command line options
+-----------------------
 
-Global overrides are the ones that take most precedence, and are usually
-populated by command-line options. You can also override one (or more) settings
-from command line using the ``-s`` (or ``--set``) command line option. 
-
-For more information see the :attr:`~scrapy.settings.Settings.overrides`
-Settings attribute.
+Arguments provided by the command line are the ones that take most precedence,
+overriding any other options. You can explicitly override one (or more)
+settings using the ``-s`` (or ``--set``) command line option.
 
 .. highlight:: sh
 
 Example::
 
-    scrapy crawl domain.com -s LOG_FILE=scrapy.log
+    scrapy crawl myspider -s LOG_FILE=scrapy.log
 
-2. Project settings module
+2. Settings per-spider
+----------------------
+
+Spiders (See the :ref:`topics-spiders` chapter for reference) can define their
+own settings that will take precedence and override the project ones. They can
+do so by setting their :attr:`scrapy.spider.Spider.custom_settings` attribute.
+
+3. Project settings module
 --------------------------
 
 The project settings module is the standard configuration file for your Scrapy
 project.  It's where most of your custom settings will be populated. For
 example:: ``myproject.settings``.
 
-3. Default settings per-command
+4. Default settings per-command
 -------------------------------
 
 Each :doc:`Scrapy tool </topics/commands>` command can have its own default
@@ -73,7 +82,7 @@ settings, which override the global default settings. Those custom command
 settings are specified in the ``default_settings`` attribute of the command
 class.
 
-4. Default global settings
+5. Default global settings
 --------------------------
 
 The global defaults are located in the ``scrapy.settings.default_settings``
@@ -115,7 +124,7 @@ Built-in settings reference
 ===========================
 
 Here's a list of all available Scrapy settings, in alphabetical order, along
-with their default values and the scope where they apply. 
+with their default values and the scope where they apply.
 
 The scope, where available, shows where the setting is being used, if it's tied
 to any particular component. In that case the module of that component will be
@@ -200,6 +209,11 @@ performed to any single IP. If non-zero, the
 used instead. In other words, concurrency limits will be applied per IP, not
 per domain.
 
+This setting also affects :setting:`DOWNLOAD_DELAY`:
+if :setting:`CONCURRENT_REQUESTS_PER_IP` is non-zero, download delay is
+enforced per IP, not per domain.
+
+
 .. setting:: DEFAULT_ITEM_CLASS
 
 DEFAULT_ITEM_CLASS
@@ -274,14 +288,14 @@ Default: ``True``
 
 Whether to enable DNS in-memory cache.
 
-.. setting:: DOWNLOADER_DEBUG
+.. setting:: DOWNLOADER
 
-DOWNLOADER_DEBUG
-----------------
+DOWNLOADER
+----------
 
-Default: ``False``
+Default: ``'scrapy.core.downloader.Downloader'``
 
-Whether to enable the Downloader debugging mode.
+The downloader to use for crawling.
 
 .. setting:: DOWNLOADER_MIDDLEWARES
 
@@ -298,7 +312,7 @@ orders. For more info see :ref:`topics-downloader-middleware-setting`.
 DOWNLOADER_MIDDLEWARES_BASE
 ---------------------------
 
-Default:: 
+Default::
 
     {
         'scrapy.contrib.downloadermiddleware.robotstxt.RobotsTxtMiddleware': 100,
@@ -339,18 +353,22 @@ DOWNLOAD_DELAY
 Default: ``0``
 
 The amount of time (in secs) that the downloader should wait before downloading
-consecutive pages from the same spider. This can be used to throttle the
+consecutive pages from the same website. This can be used to throttle the
 crawling speed to avoid hitting servers too hard. Decimal numbers are
 supported.  Example::
 
-    DOWNLOAD_DELAY = 0.25    # 250 ms of delay 
+    DOWNLOAD_DELAY = 0.25    # 250 ms of delay
 
 This setting is also affected by the :setting:`RANDOMIZE_DOWNLOAD_DELAY`
 setting (which is enabled by default). By default, Scrapy doesn't wait a fixed
 amount of time between requests, but uses a random interval between 0.5 and 1.5
 * :setting:`DOWNLOAD_DELAY`.
 
-You can also change this setting per spider.
+When :setting:`CONCURRENT_REQUESTS_PER_IP` is non-zero, delays are enforced
+per ip address instead of per domain.
+
+You can also change this setting per spider by setting ``download_delay``
+spider attribute.
 
 .. setting:: DOWNLOAD_HANDLERS
 
@@ -367,7 +385,7 @@ See `DOWNLOAD_HANDLERS_BASE` for example format.
 DOWNLOAD_HANDLERS_BASE
 ----------------------
 
-Default:: 
+Default::
 
     {
         'file': 'scrapy.core.downloader.handlers.file.FileDownloadHandler',
@@ -378,7 +396,16 @@ Default::
 
 A dict containing the request download handlers enabled by default in Scrapy.
 You should never modify this setting in your project, modify
-:setting:`DOWNLOAD_HANDLERS` instead. 
+:setting:`DOWNLOAD_HANDLERS` instead.
+
+If you want to disable any of the above download handlers you must define them
+in your project's :setting:`DOWNLOAD_HANDLERS` setting and assign `None`
+as their value.  For example, if you want to disable the file download
+handler::
+
+    DOWNLOAD_HANDLERS = {
+        'file': None,
+    }
 
 .. setting:: DOWNLOAD_TIMEOUT
 
@@ -399,9 +426,23 @@ Default: ``'scrapy.dupefilter.RFPDupeFilter'``
 The class used to detect and filter duplicate requests.
 
 The default (``RFPDupeFilter``) filters based on request fingerprint using
-the ``scrapy.utils.request.request_fingerprint`` function.
+the ``scrapy.utils.request.request_fingerprint`` function. In order to change
+the way duplicates are checked you could subclass ``RFPDupeFilter`` and
+override its ``request_fingerprint`` method. This method should accept
+scrapy :class:`~scrapy.http.Request` object and return its fingerprint
+(a string).
 
-.. setting:: jDITOR
+.. setting:: DUPEFILTER_DEBUG
+
+DUPEFILTER_DEBUG
+----------------
+
+Default: ``False``
+
+By default, ``RFPDupeFilter`` only logs the first duplicate request.
+Setting :setting:`DUPEFILTER_DEBUG` to ``True`` will make it log all duplicate requests.
+
+.. setting:: EDITOR
 
 EDITOR
 ------
@@ -419,7 +460,7 @@ EXTENSIONS
 
 Default:: ``{}``
 
-A dict containing the extensions enabled in your project, and their orders. 
+A dict containing the extensions enabled in your project, and their orders.
 
 .. setting:: EXTENSIONS_BASE
 
@@ -430,7 +471,6 @@ Default::
 
     {
         'scrapy.contrib.corestats.CoreStats': 0,
-        'scrapy.webservice.WebService': 0,
         'scrapy.telnet.TelnetConsole': 0,
         'scrapy.contrib.memusage.MemoryUsage': 0,
         'scrapy.contrib.memdebug.MemoryDebugger': 0,
@@ -443,7 +483,7 @@ Default::
 
 The list of available extensions. Keep in mind that some of them need to
 be enabled through a setting. By default, this setting contains all stable
-built-in extensions. 
+built-in extensions.
 
 For more information See the :ref:`extensions user guide  <topics-extensions>`
 and the :ref:`list of available extensions <topics-extensions-ref>`.
@@ -453,16 +493,31 @@ and the :ref:`list of available extensions <topics-extensions-ref>`.
 ITEM_PIPELINES
 --------------
 
-Default: ``[]``
+Default: ``{}``
 
-The item pipelines to use (a list of classes).
+A dict containing the item pipelines to use, and their orders. The dict is
+empty by default order values are arbitrary but it's customary to define them
+in the 0-1000 range.
+
+Lists are supported in :setting:`ITEM_PIPELINES` for backwards compatibility,
+but they are deprecated.
 
 Example::
 
-   ITEM_PIPELINES = [
-       'mybot.pipeline.validate.ValidateMyItem',
-       'mybot.pipeline.validate.StoreMyItem'
-   ]
+   ITEM_PIPELINES = {
+       'mybot.pipelines.validate.ValidateMyItem': 300,
+       'mybot.pipelines.validate.StoreMyItem': 800,
+   }
+
+.. setting:: ITEM_PIPELINES_BASE
+
+ITEM_PIPELINES_BASE
+-------------------
+
+Default: ``{}``
+
+A dict containing the pipelines enabled by default in Scrapy. You should never
+modify this setting in your project, modify :setting:`ITEM_PIPELINES` instead.
 
 .. setting:: LOG_ENABLED
 
@@ -629,7 +684,7 @@ Default: ``True``
 
 If enabled, Scrapy will wait a random amount of time (between 0.5 and 1.5
 * :setting:`DOWNLOAD_DELAY`) while fetching requests from the same
-spider.
+website.
 
 This randomization decreases the chance of the crawler being detected (and
 subsequently blocked) by sites which analyze requests looking for statistically
@@ -693,8 +748,7 @@ Default: ``'scrapy.core.scheduler.Scheduler'``
 
 The scheduler to use for crawling.
 
-.. setting:: SPIDER_MIDDLEWARES
-
+.. setting:: SPIDER_CONTRACTS
 
 SPIDER_CONTRACTS
 ----------------
@@ -703,6 +757,8 @@ Default:: ``{}``
 
 A dict containing the scrapy contracts enabled in your project, used for
 testing spiders. For more info see :ref:`topics-contracts`.
+
+.. setting:: SPIDER_CONTRACTS_BASE
 
 SPIDER_CONTRACTS_BASE
 ---------------------
@@ -718,6 +774,18 @@ Default::
 A dict containing the scrapy contracts enabled by default in Scrapy. You should
 never modify this setting in your project, modify :setting:`SPIDER_CONTRACTS`
 instead. For more info see :ref:`topics-contracts`.
+
+.. setting:: SPIDER_MANAGER_CLASS
+
+SPIDER_MANAGER_CLASS
+--------------------
+
+Default: ``'scrapy.spidermanager.SpiderManager'``
+
+The class that will be used for handling spiders, which must implement the
+:ref:`topics-api-spidermanager`.
+
+.. setting:: SPIDER_MIDDLEWARES
 
 SPIDER_MIDDLEWARES
 ------------------
@@ -842,7 +910,7 @@ USER_AGENT
 
 Default: ``"Scrapy/VERSION (+http://scrapy.org)"``
 
-The default User-Agent to use when crawling, unless overridden. 
+The default User-Agent to use when crawling, unless overridden.
 
 .. _Amazon web services: http://aws.amazon.com/
 .. _breadth-first order: http://en.wikipedia.org/wiki/Breadth-first_search

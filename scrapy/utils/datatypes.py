@@ -6,10 +6,8 @@ This module must not depend on any module outside the Standard Library.
 """
 
 import copy
-from collections import deque, defaultdict
-from itertools import chain
-
-from scrapy.utils.py27 import OrderedDict
+import six
+from collections import OrderedDict
 
 
 class MultiValueDictKeyError(KeyError):
@@ -46,7 +44,7 @@ class MultiValueDict(dict):
         try:
             list_ = dict.__getitem__(self, key)
         except KeyError:
-            raise MultiValueDictKeyError, "Key %r not found in %r" % (key, self)
+            raise MultiValueDictKeyError("Key %r not found in %r" % (key, self))
         try:
             return list_[-1]
         except IndexError:
@@ -59,7 +57,7 @@ class MultiValueDict(dict):
         return self.__class__(dict.items(self))
 
     def __deepcopy__(self, memo=None):
-        if memo is None: 
+        if memo is None:
             memo = {}
         result = self.__class__()
         memo[id(self)] = result
@@ -124,7 +122,7 @@ class MultiValueDict(dict):
     def update(self, *args, **kwargs):
         "update() extends rather than replaces existing key lists. Also accepts keyword args."
         if len(args) > 1:
-            raise TypeError, "update expected at most 1 arguments, got %d" % len(args)
+            raise TypeError("update expected at most 1 arguments, got %d" % len(args))
         if args:
             other_dict = args[0]
             if isinstance(other_dict, MultiValueDict):
@@ -135,8 +133,8 @@ class MultiValueDict(dict):
                     for key, value in other_dict.items():
                         self.setlistdefault(key, []).append(value)
                 except TypeError:
-                    raise ValueError, "MultiValueDict.update() takes either a MultiValueDict or dictionary"
-        for key, value in kwargs.iteritems():
+                    raise ValueError("MultiValueDict.update() takes either a MultiValueDict or dictionary")
+        for key, value in six.iteritems(kwargs):
             self.setlistdefault(key, []).append(value)
 
 class SiteNode(object):
@@ -203,7 +201,7 @@ class CaselessDict(dict):
         return dict.setdefault(self, self.normkey(key), self.normvalue(def_val))
 
     def update(self, seq):
-        seq = seq.iteritems() if isinstance(seq, dict) else seq
+        seq = seq.items() if isinstance(seq, dict) else seq
         iseq = ((self.normkey(k), self.normvalue(v)) for k, v in seq)
         super(CaselessDict, self).update(iseq)
 

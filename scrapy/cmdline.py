@@ -1,7 +1,9 @@
+from __future__ import print_function
 import sys
 import optparse
 import cProfile
 import inspect
+import pkg_resources
 
 import scrapy
 from scrapy.crawler import CrawlerProcess
@@ -30,8 +32,19 @@ def _get_commands_from_module(module, inproject):
             d[cmdname] = cmd()
     return d
 
+def _get_commands_from_entry_points(inproject, group='scrapy.commands'):
+    cmds = {}
+    for entry_point in pkg_resources.iter_entry_points(group):
+        obj = entry_point.load()
+        if inspect.isclass(obj):
+            cmds[entry_point.name] = obj()
+        else:
+            raise Exception("Invalid entry point %s" % entry_point.name)
+    return cmds
+
 def _get_commands_dict(settings, inproject):
     cmds = _get_commands_from_module('scrapy.commands', inproject)
+    cmds.update(_get_commands_from_entry_points(inproject))
     cmds_module = settings['COMMANDS_MODULE']
     if cmds_module:
         cmds.update(_get_commands_from_module(cmds_module, inproject))
@@ -47,34 +60,34 @@ def _pop_command_name(argv):
 
 def _print_header(settings, inproject):
     if inproject:
-        print "Scrapy %s - project: %s\n" % (scrapy.__version__, \
-            settings['BOT_NAME'])
+        print("Scrapy %s - project: %s\n" % (scrapy.__version__, \
+            settings['BOT_NAME']))
     else:
-        print "Scrapy %s - no active project\n" % scrapy.__version__
+        print("Scrapy %s - no active project\n" % scrapy.__version__)
 
 def _print_commands(settings, inproject):
     _print_header(settings, inproject)
-    print "Usage:"
-    print "  scrapy <command> [options] [args]\n"
-    print "Available commands:"
+    print("Usage:")
+    print("  scrapy <command> [options] [args]\n")
+    print("Available commands:")
     cmds = _get_commands_dict(settings, inproject)
-    for cmdname, cmdclass in sorted(cmds.iteritems()):
-        print "  %-13s %s" % (cmdname, cmdclass.short_desc())
+    for cmdname, cmdclass in sorted(cmds.items()):
+        print("  %-13s %s" % (cmdname, cmdclass.short_desc()))
     if not inproject:
-        print
-        print "  [ more ]      More commands available when run from project directory"
-    print
-    print 'Use "scrapy <command> -h" to see more info about a command'
+        print()
+        print("  [ more ]      More commands available when run from project directory")
+    print()
+    print('Use "scrapy <command> -h" to see more info about a command')
 
 def _print_unknown_command(settings, cmdname, inproject):
     _print_header(settings, inproject)
-    print "Unknown command: %s\n" % cmdname
-    print 'Use "scrapy" to see available commands' 
+    print("Unknown command: %s\n" % cmdname)
+    print('Use "scrapy" to see available commands')
 
 def _run_print_help(parser, func, *a, **kw):
     try:
         func(*a, **kw)
-    except UsageError, e:
+    except UsageError as e:
         if str(e):
             parser.error(str(e))
         if e.print_help:
@@ -105,8 +118,6 @@ def execute(argv=None, settings=None):
         conf.settings = settings
     # ------------------------------------------------------------------
 
-    crawler = CrawlerProcess(settings)
-    crawler.install()
     inproject = inside_project()
     cmds = _get_commands_dict(settings, inproject)
     cmdname = _pop_command_name(argv)
@@ -122,12 +133,13 @@ def execute(argv=None, settings=None):
     cmd = cmds[cmdname]
     parser.usage = "scrapy %s %s" % (cmdname, cmd.syntax())
     parser.description = cmd.long_desc()
-    settings.defaults.update(cmd.default_settings)
+    settings.setdict(cmd.default_settings, priority='command')
     cmd.settings = settings
     cmd.add_options(parser)
     opts, args = parser.parse_args(args=argv[1:])
     _run_print_help(parser, cmd.process_options, args, opts)
-    cmd.set_crawler(crawler)
+
+    cmd.crawler_process = CrawlerProcess(settings)
     _run_print_help(parser, _run_command, cmd, args, opts)
     sys.exit(cmd.exitcode)
 

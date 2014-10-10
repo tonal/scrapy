@@ -25,13 +25,13 @@ Declaring Items
 Items are declared using a simple class definition syntax and :class:`Field`
 objects. Here is an example::
 
-    from scrapy.item import Item, Field
+    import scrapy
 
-    class Product(Item):
-        name = Field()
-        price = Field()
-        stock = Field()
-        last_updated = Field(serializer=str)
+    class Product(scrapy.Item):
+        name = scrapy.Field()
+        price = scrapy.Field()
+        stock = scrapy.Field()
+        last_updated = scrapy.Field(serializer=str)
 
 .. note:: Those familiar with `Django`_ will notice that Scrapy Items are
    declared similar to `Django Models`_, except that Scrapy Items are much
@@ -47,11 +47,11 @@ Item Fields
 
 :class:`Field` objects are used to specify metadata for each field. For
 example, the serializer function for the ``last_updated`` field illustrated in
-the example above. 
+the example above.
 
 You can specify any kind of metadata for each field. There is no restriction on
 the values accepted by :class:`Field` objects. For this same
-reason, there isn't a reference list of all available metadata keys. Each key
+reason, there is no reference list of all available metadata keys. Each key
 defined in :class:`Field` objects could be used by a different components, and
 only those components know about it. You can also define and use any other
 :class:`Field` key in your project too, for your own needs. The main goal of
@@ -62,9 +62,9 @@ documentation to see which metadata keys are used by each component.
 
 It's important to note that the :class:`Field` objects used to declare the item
 do not stay assigned as class attributes. Instead, they can be accessed through
-the :attr:`Item.fields` attribute. 
+the :attr:`Item.fields` attribute.
 
-And that's all you need to know about declaring items. 
+And that's all you need to know about declaring items.
 
 Working with Items
 ==================
@@ -157,6 +157,10 @@ Copying items::
     >>> print product2
     Product(name='Desktop PC', price=1000)
 
+    >>> product3 = product2.copy()
+    >>> print product3
+    Product(name='Desktop PC', price=1000)
+
 Creating dicts from items::
 
     >>> dict(product) # create a dict from all populated values
@@ -181,14 +185,14 @@ fields) by declaring a subclass of your original Item.
 For example::
 
     class DiscountedProduct(Product):
-        discount_percent = Field(serializer=str)
-        discount_expiration_date = Field()
+        discount_percent = scrapy.Field(serializer=str)
+        discount_expiration_date = scrapy.Field()
 
 You can also extend field metadata by using the previous field metadata and
 appending more values, or changing existing values, like this::
 
     class SpecificProduct(Product):
-        name = Field(Product.fields['name'], serializer=my_serializer)
+        name = scrapy.Field(Product.fields['name'], serializer=my_serializer)
 
 That adds (or replaces) the ``serializer`` metadata key for the ``name`` field,
 keeping all the previously existing metadata values.
@@ -198,11 +202,11 @@ Item objects
 
 .. class:: Item([arg])
 
-    Return a new Item optionally initialized from the given argument. 
-    
+    Return a new Item optionally initialized from the given argument.
+
     Items replicate the standard `dict API`_, including its constructor. The
     only additional attribute provided by Items is:
-    
+
     .. attribute:: fields
 
         A dictionary containing *all declared fields* for this Item, not only

@@ -4,16 +4,16 @@ for scraping from an XML feed.
 
 See documentation in docs/topics/spiders.rst
 """
-from scrapy.spider import BaseSpider
+from scrapy.spider import Spider
 from scrapy.item import BaseItem
 from scrapy.http import Request
 from scrapy.utils.iterators import xmliter, csviter
 from scrapy.utils.spider import iterate_spider_output
-from scrapy.selector import XmlXPathSelector, HtmlXPathSelector
+from scrapy.selector import Selector
 from scrapy.exceptions import NotConfigured, NotSupported
 
 
-class XMLFeedSpider(BaseSpider):
+class XMLFeedSpider(Spider):
     """
     This class intends to be the base class for spiders that scrape
     from XML feeds.
@@ -52,7 +52,7 @@ class XMLFeedSpider(BaseSpider):
 
     def parse_nodes(self, response, nodes):
         """This method is called for the nodes matching the provided tag name
-        (itertag). Receives the response and an XPathSelector for each node.
+        (itertag). Receives the response and an Selector for each node.
         Overriding this method is mandatory. Otherwise, you spider won't work.
         This method must return either a BaseItem, a Request, or a list
         containing any of them.
@@ -71,13 +71,13 @@ class XMLFeedSpider(BaseSpider):
         if self.iterator == 'iternodes':
             nodes = self._iternodes(response)
         elif self.iterator == 'xml':
-            selector = XmlXPathSelector(response)
+            selector = Selector(response, type='xml')
             self._register_namespaces(selector)
-            nodes = selector.select('//%s' % self.itertag)
+            nodes = selector.xpath('//%s' % self.itertag)
         elif self.iterator == 'html':
-            selector = HtmlXPathSelector(response)
+            selector = Selector(response, type='html')
             self._register_namespaces(selector)
-            nodes = selector.select('//%s' % self.itertag)
+            nodes = selector.xpath('//%s' % self.itertag)
         else:
             raise NotSupported('Unsupported node iterator')
 
@@ -92,7 +92,7 @@ class XMLFeedSpider(BaseSpider):
         for (prefix, uri) in self.namespaces:
             selector.register_namespace(prefix, uri)
 
-class CSVFeedSpider(BaseSpider):
+class CSVFeedSpider(Spider):
     """Spider for parsing CSV feeds.
     It receives a CSV file in a response; iterates through each of its rows,
     and calls parse_row with a dict containing each field's data.

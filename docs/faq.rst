@@ -20,7 +20,7 @@ In other words, comparing `BeautifulSoup`_ (or `lxml`_) to Scrapy is like
 comparing `jinja2`_ to `Django`_.
 
 .. _BeautifulSoup: http://www.crummy.com/software/BeautifulSoup/
-.. _lxml: http://codespeak.net/lxml/
+.. _lxml: http://lxml.de/
 .. _jinja2: http://jinja.pocoo.org/2/
 .. _Django: http://www.djangoproject.com
 
@@ -29,13 +29,14 @@ comparing `jinja2`_ to `Django`_.
 What Python versions does Scrapy support?
 -----------------------------------------
 
-Scrapy runs in Python 2.6 and 2.7.
+Scrapy is supported under Python 2.7 only.
+Python 2.6 support was dropped starting at Scrapy 0.20.
 
-Does Scrapy work with Python 3.0?
+Does Scrapy work with Python 3?
 ---------------------------------
 
-No, and there are no plans to port Scrapy to Python 3.0 yet. At the moment,
-Scrapy works with Python 2.6 and 2.7.
+No, but there are plans to support Python 3.3+.
+At the moment, Scrapy works with Python 2.7.
 
 .. seealso:: :ref:`faq-python-versions`.
 
@@ -65,6 +66,12 @@ Yes. Support for HTTP proxies is provided (since Scrapy 0.8) through the HTTP
 Proxy downloader middleware. See
 :class:`~scrapy.contrib.downloadermiddleware.httpproxy.HttpProxyMiddleware`.
 
+How can I scrape an item with attributes in different pages?
+------------------------------------------------------------
+
+See :ref:`topics-request-response-ref-request-callback-arguments`.
+
+
 Scrapy crashes with: ImportError: No module named win32api
 ----------------------------------------------------------
 
@@ -78,8 +85,8 @@ How can I simulate a user login in my spider?
 
 See :ref:`topics-request-response-ref-request-userlogin`.
 
-Does Scrapy crawl in breath-first or depth-first order?
--------------------------------------------------------
+Does Scrapy crawl in breadth-first or depth-first order?
+--------------------------------------------------------
 
 By default, Scrapy uses a `LIFO`_ queue for storing pending requests, which
 basically means that it crawls in `DFO order`_. This order is more convenient
@@ -165,7 +172,7 @@ the :ref:`topics-signals-ref` to know which ones.
 What does the response status code 999 means?
 ---------------------------------------------
 
-999 is a custom reponse status code used by Yahoo sites to throttle requests.
+999 is a custom response status code used by Yahoo sites to throttle requests.
 Try slowing down the crawling speed by using a download delay of ``2`` (or
 higher) in your spider::
 
@@ -173,7 +180,7 @@ higher) in your spider::
 
         name = 'myspider'
 
-        DOWNLOAD_DELAY = 2
+        download_delay = 2
 
         # [ ... rest of the spider code ... ]
 
@@ -194,15 +201,15 @@ Simplest way to dump all my scraped items into a JSON/CSV/XML file?
 
 To dump into a JSON file::
 
-    scrapy crawl myspider -o items.json -t json
+    scrapy crawl myspider -o items.json
 
 To dump into a CSV file::
 
-    scrapy crawl myspider -o items.csv -t csv
+    scrapy crawl myspider -o items.csv
 
 To dump into a XML file::
 
-    scrapy crawl myspider -o items.xml -t xml
+    scrapy crawl myspider -o items.xml
 
 For more information see :ref:`topics-feed-exports`
 

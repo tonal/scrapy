@@ -61,7 +61,7 @@ Getting links to follow
 By looking at the category URLs we can see they share a pattern:
 
     http://directory.google.com/Category/Subcategory/Another_Subcategory
-    
+
 Once we know that, we are able to construct a regular expression to follow
 those links. For example, the following one::
 
@@ -69,7 +69,7 @@ those links. For example, the following one::
 
 So, based on that regular expression we can create the first crawling rule::
 
-    Rule(SgmlLinkExtractor(allow='directory.google.com/[A-Z][a-zA-Z_/]+$', ),
+    Rule(LinkExtractor(allow='directory.google.com/[A-Z][a-zA-Z_/]+$', ),
         'parse_category',
         follow=True,
     ),
@@ -81,7 +81,7 @@ process and extract data from those pages.
 
 This is how the spider would look so far::
 
-   from scrapy.contrib.linkextractors.sgml import SgmlLinkExtractor
+   from scrapy.contrib.linkextractors import LinkExtractor
    from scrapy.contrib.spiders import CrawlSpider, Rule
 
    class GoogleDirectorySpider(CrawlSpider):
@@ -90,7 +90,7 @@ This is how the spider would look so far::
        start_urls = ['http://directory.google.com/']
 
        rules = (
-           Rule(SgmlLinkExtractor(allow='directory\.google\.com/[A-Z][a-zA-Z_/]+$'),
+           Rule(LinkExtractor(allow='directory\.google\.com/[A-Z][a-zA-Z_/]+$'),
                'parse_category', follow=True,
            ),
        )
@@ -103,11 +103,11 @@ This is how the spider would look so far::
 Extracting the data
 ===================
 
-Now we're going to write the code to extract data from those pages. 
+Now we're going to write the code to extract data from those pages.
 
 With the help of Firebug, we'll take a look at some page containing links to
 websites (say http://directory.google.com/Top/Arts/Awards/) and find out how we can
-extract those links using :ref:`XPath selectors <topics-selectors>`. We'll also
+extract those links using :ref:`Selectors <topics-selectors>`. We'll also
 use the :ref:`Scrapy shell <topics-shell>` to test those XPath's and make sure
 they work as we expect.
 
@@ -146,16 +146,14 @@ that have that grey colour of the links,
 Finally, we can write our ``parse_category()`` method::
 
     def parse_category(self, response):
-        hxs = HtmlXPathSelector(response)
-
         # The path to website links in directory page
-        links = hxs.select('//td[descendant::a[contains(@href, "#pagerank")]]/following-sibling::td/font')
+        links = response.xpath('//td[descendant::a[contains(@href, "#pagerank")]]/following-sibling::td/font')
 
         for link in links:
             item = DirectoryItem()
-            item['name'] = link.select('a/text()').extract()
-            item['url'] = link.select('a/@href').extract()
-            item['description'] = link.select('font[2]/text()').extract()
+            item['name'] = link.xpath('a/text()').extract()
+            item['url'] = link.xpath('a/@href').extract()
+            item['description'] = link.xpath('font[2]/text()').extract()
             yield item
 
 
@@ -164,6 +162,6 @@ not in the original HTML, such as the typical case of ``<tbody>``
 elements.
 
 or tags which Therefer   in page HTML
-sources may on Firebug inspects the live DOM 
+sources may on Firebug inspects the live DOM
 
 .. _has been shut down by Google: http://searchenginewatch.com/article/2096661/Google-Directory-Has-Been-Shut-Down

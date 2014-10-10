@@ -1,31 +1,19 @@
-"""Download handlers for http and https schemes"""
-
-from twisted.internet import reactor
-
-from scrapy.exceptions import NotSupported
-from scrapy.utils.misc import load_object
 from scrapy import optional_features
+from .http10 import HTTP10DownloadHandler
 
-ssl_supported = 'ssl' in optional_features
+if 'http11' in optional_features:
+    from .http11 import HTTP11DownloadHandler as HTTPDownloadHandler
+else:
+    HTTPDownloadHandler = HTTP10DownloadHandler
 
-class HttpDownloadHandler(object):
 
-    def __init__(self, settings):
-        self.HTTPClientFactory = load_object(settings['DOWNLOADER_HTTPCLIENTFACTORY'])
-        self.ClientContextFactory = load_object(settings['DOWNLOADER_CLIENTCONTEXTFACTORY'])
+# backwards compatibility
+class HttpDownloadHandler(HTTP10DownloadHandler):
 
-    def download_request(self, request, spider):
-        """Return a deferred for the HTTP download"""
-        factory = self.HTTPClientFactory(request)
-        self._connect(factory)
-        return factory.deferred
-
-    def _connect(self, factory):
-        host, port = factory.host, factory.port
-        if factory.scheme == 'https':
-            if ssl_supported:
-                return reactor.connectSSL(host, port, factory, \
-                        self.ClientContextFactory())
-            raise NotSupported("HTTPS not supported: install pyopenssl library")
-        else:
-            return reactor.connectTCP(host, port, factory)
+    def __init__(self, *args, **kwargs):
+        import warnings
+        from scrapy.exceptions import ScrapyDeprecationWarning
+        warnings.warn('HttpDownloadHandler is deprecated, import scrapy.core.downloader'
+                      '.handlers.http10.HTTP10DownloadHandler instead',
+                      category=ScrapyDeprecationWarning, stacklevel=1)
+        super(HttpDownloadHandler, self).__init__(*args, **kwargs)

@@ -1,3 +1,4 @@
+from __future__ import print_function
 from scrapy.command import ScrapyCommand
 
 class Command(ScrapyCommand):
@@ -9,5 +10,5 @@ class Command(ScrapyCommand):
         return "List available spiders"
 
     def run(self, args, opts):
-        for s in self.crawler.spiders.list():
-            print s
+        for s in sorted(self.crawler_process.spiders.list()):
+            print(s)

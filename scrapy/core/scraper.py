@@ -9,7 +9,7 @@ from twisted.internet import defer
 from scrapy.utils.defer import defer_result, defer_succeed, parallel, iter_errback
 from scrapy.utils.spider import iterate_spider_output
 from scrapy.utils.misc import load_object
-from scrapy.exceptions import CloseSpider, DropItem
+from scrapy.exceptions import CloseSpider, DropItem, IgnoreRequest
 from scrapy import signals
 from scrapy.http import Request, Response
 from scrapy.item import BaseItem
@@ -57,10 +57,11 @@ class Slot(object):
     def needs_backout(self):
         return self.active_size > self.max_active_size
 
+
 class Scraper(object):
 
     def __init__(self, crawler):
-        self.slots = {}
+        self.slot = None
         self.spidermw = SpiderMiddlewareManager.from_crawler(crawler)
         itemproc_cls = load_object(crawler.settings['ITEM_PROCESSOR'])
         self.itemproc = itemproc_cls.from_crawler(crawler)
@@ -72,14 +73,12 @@ class Scraper(object):
     @defer.inlineCallbacks
     def open_spider(self, spider):
         """Open the given spider for scraping and allocate resources for it"""
-        assert spider not in self.slots, "Spider already opened: %s" % spider
-        self.slots[spider] = Slot()
+        self.slot = Slot()
         yield self.itemproc.open_spider(spider)
 
     def close_spider(self, spider):
         """Close a spider being scraped and release its resources"""
-        assert spider in self.slots, "Spider not opened: %s" % spider
-        slot = self.slots[spider]
+        slot = self.slot
         slot.closing = defer.Deferred()
         slot.closing.addCallback(self.itemproc.close_spider)
         self._check_if_closing(spider, slot)
@@ -87,15 +86,14 @@ class Scraper(object):
 
     def is_idle(self):
         """Return True if there isn't any more spiders to process"""
-        return not self.slots
+        return not self.slot
 
     def _check_if_closing(self, spider, slot):
         if slot.closing and slot.is_idle():
-            del self.slots[spider]
             slot.closing.callback(spider)
 
     def enqueue_scrape(self, response, request, spider):
-        slot = self.slots[spider]
+        slot = self.slot
         dfd = slot.add_response_request(response, request)
         def finish_scraping(_):
             slot.finish_response(response, request)
@@ -103,8 +101,8 @@ class Scraper(object):
             self._scrape_next(spider, slot)
             return _
         dfd.addBoth(finish_scraping)
-        dfd.addErrback(log.err, 'Scraper bug processing %s' % request, \
-            spider=spider)
+        dfd.addErrback(
+            log.err, 'Scraper bug processing %s' % request, spider=spider)
         self._scrape_next(spider, slot)
         return dfd
 
@@ -124,16 +122,16 @@ class Scraper(object):
         return dfd
 
     def _scrape2(self, request_result, request, spider):
-        """Handle the diferent cases of request's result been a Response or a
+        """Handle the different cases of request's result been a Response or a
         Failure"""
         if not isinstance(request_result, Failure):
-            return self.spidermw.scrape_response(self.call_spider, \
-                request_result, request, spider)
+            return self.spidermw.scrape_response(
+                self.call_spider, request_result, request, spider)
         else:
             # FIXME: don't ignore errors in spider middleware
             dfd = self.call_spider(request_result, request, spider)
-            return dfd.addErrback(self._log_download_errors, \
-                request_result, request, spider)
+            return dfd.addErrback(
+                self._log_download_errors, request_result, request, spider)
 
     def call_spider(self, result, request, spider):
         result.request = request
@@ -146,11 +144,21 @@ class Scraper(object):
         if isinstance(exc, CloseSpider):
             self.crawler.engine.close_spider(spider, exc.reason or 'cancelled')
             return
-        log.err(_failure, "Spider error processing %s" % request, spider=spider)
-        self.signals.send_catch_log(signal=signals.spider_error, failure=_failure, response=response, \
-            spider=spider)
-        self.crawler.stats.inc_value("spider_exceptions/%s" % _failure.value.__class__.__name__, \
-            spider=spider)
+        referer = request.headers.get('Referer')
+        log.err(
+            _failure,
+            "Spider error processing %s (referer: %s)" % (request, referer),
+            spider=spider
+        )
+        self.signals.send_catch_log(
+            signal=signals.spider_error,
+            failure=_failure, response=response,
+            spider=spider
+        )
+        self.crawler.stats.inc_value(
+            "spider_exceptions/%s" % _failure.value.__class__.__name__,
+            spider=spider
+        )
 
     def handle_spider_output(self, result, request, response, spider):
         if not result:
@@ -165,11 +173,9 @@ class Scraper(object):
         from the given spider
         """
         if isinstance(output, Request):
-            self.signals.send_catch_log(signal=signals.request_received, request=output, \
-                spider=spider)
             self.crawler.engine.crawl(request=output, spider=spider)
         elif isinstance(output, BaseItem):
-            self.slots[spider].itemproc_size += 1
+            self.slot.itemproc_size += 1
             dfd = self.itemproc.process_item(output, spider)
             dfd.addBoth(self._itemproc_finished, output, response, spider)
             return dfd
@@ -185,30 +191,39 @@ class Scraper(object):
         """Log and silence errors that come from the engine (typically download
         errors that got propagated thru here)
         """
-        if spider_failure is download_failure:
-            errmsg = spider_failure.getErrorMessage()
-            if errmsg:
-                log.msg(format='Error downloading %(request)s: %(errmsg)s',
-                        level=log.ERROR, spider=spider, request=request, errmsg=errmsg)
-            return
-        return spider_failure
+        if (isinstance(download_failure, Failure) and
+                not download_failure.check(IgnoreRequest)):
+            if download_failure.frames:
+                log.err(download_failure, 'Error downloading %s' % request,
+                        spider=spider)
+            else:
+                errmsg = download_failure.getErrorMessage()
+                if errmsg:
+                    log.msg(format='Error downloading %(request)s: %(errmsg)s',
+                            level=log.ERROR, spider=spider, request=request,
+                            errmsg=errmsg)
+
+        if spider_failure is not download_failure:
+            return spider_failure
 
     def _itemproc_finished(self, output, item, response, spider):
         """ItemProcessor finished for the given ``item`` and returned ``output``
         """
-        self.slots[spider].itemproc_size -= 1
+        self.slot.itemproc_size -= 1
         if isinstance(output, Failure):
             ex = output.value
             if isinstance(ex, DropItem):
                 logkws = self.logformatter.dropped(item, ex, response, spider)
                 log.msg(spider=spider, **logkws)
-                return self.signals.send_catch_log_deferred(signal=signals.item_dropped, \
-                    item=item, spider=spider, exception=output.value)
+                return self.signals.send_catch_log_deferred(
+                    signal=signals.item_dropped, item=item, response=response,
+                    spider=spider, exception=output.value)
             else:
                 log.err(output, 'Error processing %s' % item, spider=spider)
         else:
             logkws = self.logformatter.scraped(output, response, spider)
             log.msg(spider=spider, **logkws)
-            return self.signals.send_catch_log_deferred(signal=signals.item_scraped, \
-                item=output, response=response, spider=spider)
+            return self.signals.send_catch_log_deferred(
+                signal=signals.item_scraped, item=output, response=response,
+                spider=spider)
 

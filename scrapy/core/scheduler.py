@@ -2,7 +2,7 @@ import os
 import json
 from os.path import join, exists
 
-from scrapy.utils.pqueue import PriorityQueue
+from queuelib import PriorityQueue
 from scrapy.utils.reqser import request_to_dict, request_from_dict
 from scrapy.utils.misc import load_object
 from scrapy.utils.job import job_dir
@@ -46,6 +46,7 @@ class Scheduler(object):
 
     def enqueue_request(self, request):
         if not request.dont_filter and self.df.request_seen(request):
+            self.df.log(request, self.spider)
             return
         dqok = self._dqpush(request)
         if dqok:
@@ -76,7 +77,7 @@ class Scheduler(object):
         try:
             reqd = request_to_dict(request, self.spider)
             self.dqs.push(reqd, -request.priority)
-        except ValueError, e: # non serializable request
+        except ValueError as e: # non serializable request
             if self.logunser:
                 log.msg(format="Unable to serialize request: %(request)s - reason: %(reason)s",
                         level=log.ERROR, spider=self.spider,

@@ -8,7 +8,10 @@ from threading import Thread
 
 from scrapy.command import ScrapyCommand
 from scrapy.shell import Shell
+from scrapy.http import Request
 from scrapy import log
+from scrapy.utils.spider import spidercls_for_request, DefaultSpider
+
 
 class Command(ScrapyCommand):
 
@@ -39,14 +42,30 @@ class Command(ScrapyCommand):
 
     def run(self, args, opts):
         url = args[0] if args else None
-        spider = None
+        spiders = self.crawler_process.spiders
+
+        spidercls = DefaultSpider
         if opts.spider:
-            spider = self.crawler.spiders.create(opts.spider)
-        shell = Shell(self.crawler, update_vars=self.update_vars, code=opts.code)
+            spidercls = spiders.load(opts.spider)
+        elif url:
+            spidercls = spidercls_for_request(spiders, Request(url),
+                                              spidercls, log_multiple=True)
+
+        # The crawler is created this way since the Shell manually handles the
+        # crawling engine, so the set up in the crawl method won't work
+        crawler = self.crawler_process._create_crawler(spidercls)
+        self.crawler_process._setup_crawler_logging(crawler)
+        # The Shell class needs a persistent engine in the crawler
+        crawler.engine = crawler._create_engine()
+        crawler.engine.start()
+
         self._start_crawler_thread()
-        shell.start(url=url, spider=spider)
+
+        shell = Shell(crawler, update_vars=self.update_vars, code=opts.code)
+        shell.start(url=url)
 
     def _start_crawler_thread(self):
-        t = Thread(target=self.crawler.start)
+        t = Thread(target=self.crawler_process.start,
+                   kwargs={'stop_after_crawl': False})
         t.daemon = True
         t.start()

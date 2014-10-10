@@ -58,7 +58,6 @@ Basic concepts
    topics/commands
    topics/items
    topics/spiders
-   topics/link-extractors
    topics/selectors
    topics/loaders
    topics/shell
@@ -139,6 +138,7 @@ Solving specific problems
    topics/ubuntu
    topics/scrapyd
    topics/autothrottle
+   topics/benchmarking
    topics/jobs
    topics/djangoitem
 
@@ -177,6 +177,9 @@ Solving specific problems
 
 :doc:`topics/autothrottle`
     Adjust crawl rate dynamically based on load.
+
+:doc:`topics/benchmarking`
+    Check how Scrapy performs on your hardware.
 
 :doc:`topics/jobs`
     Learn how to pause and resume crawls for large spiders.

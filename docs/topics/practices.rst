@@ -15,27 +15,61 @@ Run Scrapy from a script
 You can use the :ref:`API <topics-api>` to run Scrapy from a script, instead of
 the typical way of running Scrapy via ``scrapy crawl``.
 
+Remember that Scrapy is built on top of the Twisted
+asynchronous networking library, so you need to run it inside the Twisted reactor.
+
+Note that you will also have to shutdown the Twisted reactor yourself after the
+spider is finished. This can be achieved by adding callbacks to the deferred
+returned by the :meth:`CrawlerRunner.crawl
+<scrapy.crawler.CrawlerRunner.crawl>` method.
+
 What follows is a working example of how to do that, using the `testspiders`_
-project as example. Remember that Scrapy is built on top of the Twisted
-asynchronous networking library, so you need run it inside the Twisted reactor.
+project as example.
 
 ::
 
     from twisted.internet import reactor
-    from scrapy.crawler import Crawler
-    from scrapy.settings import Settings
-    from scrapy import log
-    from testspiders.spiders.followall import FollowAllSpider
+    from scrapy.crawler import CrawlerRunner
+    from scrapy.utils.project import get_project_settings
 
-    spider = FollowAllSpider(domain='scrapinghub.com')
-    crawler = Crawler(Settings())
-    crawler.configure()
-    crawler.crawl(spider)
-    crawler.start()
-    log.start()
-    reactor.run() # the script will block here
+    runner = CrawlerRunner(get_project_settings())
+
+    # 'followall' is the name of one of the spiders of the project.
+    d = runner.crawl('followall', domain='scrapinghub.com')
+    d.addBoth(lambda _: reactor.stop())
+    reactor.run() # the script will block here until the crawling is finished
+
+Running spiders outside projects it's not much different. You have to create a
+generic :class:`~scrapy.settings.Settings` object and populate it as needed
+(See :ref:`topics-settings-ref` for the available settings), instead of using
+the configuration returned by `get_project_settings`.
+
+Spiders can still be referenced by their name if :setting:`SPIDER_MODULES` is
+set with the modules where Scrapy should look for spiders.  Otherwise, passing
+the spider class as first argument in the :meth:`CrawlerRunner.crawl
+<scrapy.crawler.CrawlerRunner.crawl>` method is enough.
+
+::
+
+    from twisted.internet import reactor
+    from scrapy.spider import Spider
+    from scrapy.crawler import CrawlerRunner
+    from scrapy.settings import Settings
+
+    class MySpider(Spider):
+        # Your spider definition
+        ...
+
+    settings = Settings({'USER_AGENT': 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 5.1)'})
+    runner = CrawlerRunner(settings)
+
+    d = runner.crawl(MySpider)
+    d.addBoth(lambda _: reactor.stop())
+    reactor.run() # the script will block here until the crawling is finished
 
 .. seealso:: `Twisted Reactor Overview`_.
+
+.. _run-multiple-spiders:
 
 Running multiple spiders in the same process
 ============================================
@@ -44,27 +78,42 @@ By default, Scrapy runs a single spider per process when you run ``scrapy
 crawl``. However, Scrapy supports running multiple spiders per process using
 the :ref:`internal API <topics-api>`.
 
-Here is an example, using the `testspiders`_ project:
+Here is an example that runs multiple spiders simultaneously, using the
+`testspiders`_ project:
 
 ::
 
-    from twisted.internet import reactor
-    from scrapy.crawler import Crawler
-    from scrapy.settings import Settings
-    from scrapy import log
-    from testspiders.spiders.followall import FollowAllSpider
+    from twisted.internet import reactor, defer
+    from scrapy.crawler import CrawlerRunner
+    from scrapy.utils.project import get_project_settings
 
-    def setup_crawler(domain):
-        spider = FollowAllSpider(domain=domain)
-        crawler = Crawler(Settings())
-        crawler.configure()
-        crawler.crawl(spider)
-        crawler.start()
-        
+    runner = CrawlerRunner(get_project_settings())
+    dfs = set()
     for domain in ['scrapinghub.com', 'insophia.com']:
-        setup_crawler(domain)
-    log.start()
-    reactor.run()
+        d = runner.crawl('followall', domain=domain)
+        dfs.add(d)
+
+    defer.DeferredList(dfs).addBoth(lambda _: reactor.stop())
+    reactor.run() # the script will block here until all crawling jobs are finished
+
+Same example but running the spiders sequentially by chaining the deferreds:
+
+::
+
+    from twisted.internet import reactor, defer
+    from scrapy.crawler import CrawlerRunner
+    from scrapy.utils.project import get_project_settings
+
+    runner = CrawlerRunner(get_project_settings())
+
+    @defer.inlineCallbacks
+    def crawl():
+        for domain in ['scrapinghub.com', 'insophia.com']:
+            yield runner.crawl('followall', domain=domain)
+        reactor.stop()
+
+    crawl()
+    reactor.run() # the script will block here until the last crawl call is finished
 
 .. seealso:: :ref:`run-from-script`.
 
@@ -120,6 +169,9 @@ Here are some tips to keep in mind when dealing with these kind of sites:
   directly
 * use a pool of rotating IPs. For example, the free `Tor project`_ or paid
   services like `ProxyMesh`_
+* use a highly distributed downloader that circumvents bans internally, so you
+  can just focus on parsing clean pages. One example of such downloaders is
+  `Crawlera`_
 
 If you are still unable to prevent your bot getting banned, consider contacting
 `commercial support`_.
@@ -130,3 +182,25 @@ If you are still unable to prevent your bot getting banned, consider contacting
 .. _Google cache: http://www.googleguide.com/cached_pages.html
 .. _testspiders: https://github.com/scrapinghub/testspiders
 .. _Twisted Reactor Overview: http://twistedmatrix.com/documents/current/core/howto/reactor-basics.html
+.. _Crawlera: http://crawlera.com
+
+.. _dynamic-item-classes:
+
+Dynamic Creation of Item Classes
+================================
+
+For applications in which the structure of item class is to be determined by
+user input, or other changing conditions, you can dynamically create item
+classes instead of manually coding them.
+
+::
+
+
+    from scrapy.item import DictItem, Field
+
+    def create_item_class(class_name, field_list):
+        field_dict = {}
+        for field_name in field_list:
+            field_dict[field_name] = Field()
+
+        return type(class_name, (DictItem,), field_dict)

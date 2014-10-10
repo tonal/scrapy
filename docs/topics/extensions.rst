@@ -36,7 +36,6 @@ by a string: the full Python path to the extension's class name. For example::
 
     EXTENSIONS = {
         'scrapy.contrib.corestats.CoreStats': 500,
-        'scrapy.webservice.WebService': 500,
         'scrapy.telnet.TelnetConsole': 500,
     }
 
@@ -178,18 +177,6 @@ Core Stats extension
 Enable the collection of core statistics, provided the stats collection is
 enabled (see :ref:`topics-stats`).
 
-.. _topics-extensions-ref-webservice:
-
-Web service extension
-~~~~~~~~~~~~~~~~~~~~~
-
-.. module:: scrapy.webservice
-   :synopsis: Web service
-
-.. class:: scrapy.webservice.WebService
-
-See `topics-webservice`.
-
 .. _topics-extensions-ref-telnetconsole:
 
 Telnet console extension
@@ -248,7 +235,6 @@ Memory debugger extension
 An extension for debugging memory usage. It collects information about:
 
 * objects uncollected by the Python garbage collector
-* libxml2 memory leaks
 * objects left alive that shouldn't. For more info, see :ref:`topics-leaks-trackrefs`
 
 To enable this extension, turn on the :setting:`MEMDEBUG_ENABLED` setting. The

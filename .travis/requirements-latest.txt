@@ -1,5 +1,0 @@
-pyOpenSSL
-lxml
-twisted
-boto
-.

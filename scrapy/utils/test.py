@@ -2,34 +2,11 @@
 This module contains some assorted functions used in tests
 """
 
-import os, sys
+import os
 
+from importlib import import_module
 from twisted.trial.unittest import SkipTest
 
-def libxml2debug(testfunction):
-    """Decorator for debugging libxml2 memory leaks inside a function.
-    
-    We've found libxml2 memory leaks are something very weird, and can happen
-    sometimes depending on the order where tests are run. So this decorator
-    enables libxml2 memory leaks debugging only when the environment variable
-    LIBXML2_DEBUGLEAKS is set.
-
-    """
-    try:
-        import libxml2
-    except ImportError:
-        return testfunction
-    def newfunc(*args, **kwargs):
-        libxml2.debugMemory(1)
-        testfunction(*args, **kwargs)
-        libxml2.cleanupParser()
-        leaked_bytes = libxml2.debugMemory(0) 
-        assert leaked_bytes == 0, "libxml2 memory leak detected: %d bytes" % leaked_bytes
-
-    if 'LIBXML2_DEBUGLEAKS' in os.environ:
-        return newfunc
-    else:
-        return testfunction
 
 def assert_aws_environ():
     """Asserts the current environment is suitable for running AWS testsi.
@@ -37,35 +14,50 @@ def assert_aws_environ():
     """
     try:
         import boto
-    except ImportError, e:
+    except ImportError as e:
         raise SkipTest(str(e))
 
     if 'AWS_ACCESS_KEY_ID' not in os.environ:
         raise SkipTest("AWS keys not found")
 
-def get_crawler(settings_dict=None):
+def get_crawler(spidercls=None, settings_dict=None):
     """Return an unconfigured Crawler object. If settings_dict is given, it
-    will be used as the settings present in the settings module of the
-    CrawlerSettings.
+    will be used to populate the crawler settings with a project level
+    priority.
     """
-    from scrapy.crawler import Crawler
-    from scrapy.settings import CrawlerSettings
+    from scrapy.crawler import CrawlerRunner
+    from scrapy.settings import Settings
+    from scrapy.spider import Spider
 
-    class SettingsModuleMock(object):
-        pass
-    settings_module = SettingsModuleMock()
-    if settings_dict:
-        for k, v in settings_dict.items():
-            setattr(settings_module, k, v)
-    settings = CrawlerSettings(settings_module)
-    return Crawler(settings)
+    runner = CrawlerRunner(Settings(settings_dict))
+    return runner._create_crawler(spidercls or Spider)
 
 def get_pythonpath():
     """Return a PYTHONPATH suitable to use in processes so that they find this
     installation of Scrapy"""
-    sep = ';' if sys.platform == 'win32' else ':'
-    scrapy_path = __import__('scrapy').__path__[0]
-    return os.path.dirname(scrapy_path) + sep + os.environ.get('PYTHONPATH', '')
+    scrapy_path = import_module('scrapy').__path__[0]
+    return os.path.dirname(scrapy_path) + os.pathsep + os.environ.get('PYTHONPATH', '')
+
+def get_testenv():
+    """Return a OS environment dict suitable to fork processes that need to import
+    this installation of Scrapy, instead of a system installed one.
+    """
+    env = os.environ.copy()
+    env['PYTHONPATH'] = get_pythonpath()
+    return env
+
+def get_testlog():
+    """Get Scrapy log of current test, ignoring the rest"""
+    with open("test.log", "rb") as fp:
+        loglines = fp.readlines()
+
+    thistest = []
+    for line in loglines[::-1]:
+        thistest.append(line)
+        if "[-] -->" in line:
+            break
+    return "".join(thistest[::-1])
+
 
 def assert_samelines(testcase, text1, text2, msg=None):
     """Asserts text1 and text2 have the same lines, ignoring differences in

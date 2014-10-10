@@ -1,12 +1,13 @@
 """
-This module implements a class which returns the appropiate Response class
-based on different criterias.
+This module implements a class which returns the appropriate Response class
+based on different criteria.
 
 """
 
 from mimetypes import MimeTypes
 from pkgutil import get_data
-from cStringIO import StringIO
+from io import StringIO
+import six
 
 from scrapy.http import Response
 from scrapy.utils.misc import load_object
@@ -32,13 +33,13 @@ class ResponseTypes(object):
     def __init__(self):
         self.classes = {}
         self.mimetypes = MimeTypes()
-        mimedata = get_data('scrapy', 'mime.types')
+        mimedata = get_data('scrapy', 'mime.types').decode('utf8')
         self.mimetypes.readfp(StringIO(mimedata))
-        for mimetype, cls in self.CLASSES.iteritems():
+        for mimetype, cls in six.iteritems(self.CLASSES):
             self.classes[mimetype] = load_object(cls)
 
     def from_mimetype(self, mimetype):
-        """Return the most appropiate Response class for the given mimetype"""
+        """Return the most appropriate Response class for the given mimetype"""
         if mimetype is None:
             return Response
         elif mimetype in self.classes:
@@ -48,7 +49,7 @@ class ResponseTypes(object):
             return self.classes.get(basetype, Response)
 
     def from_content_type(self, content_type, content_encoding=None):
-        """Return the most appropiate Response class from an HTTP Content-Type
+        """Return the most appropriate Response class from an HTTP Content-Type
         header """
         if content_encoding:
             return Response
@@ -64,7 +65,7 @@ class ResponseTypes(object):
             return Response
 
     def from_headers(self, headers):
-        """Return the most appropiate Response class by looking at the HTTP
+        """Return the most appropriate Response class by looking at the HTTP
         headers"""
         cls = Response
         if 'Content-Type' in headers:
@@ -75,7 +76,7 @@ class ResponseTypes(object):
         return cls
 
     def from_filename(self, filename):
-        """Return the most appropiate Response class from a file name"""
+        """Return the most appropriate Response class from a file name"""
         mimetype, encoding = self.mimetypes.guess_type(filename)
         if mimetype and not encoding:
             return self.from_mimetype(mimetype)
@@ -83,7 +84,7 @@ class ResponseTypes(object):
             return Response
 
     def from_body(self, body):
-        """Try to guess the appropiate response based on the body content.
+        """Try to guess the appropriate response based on the body content.
         This method is a bit magic and could be improved in the future, but
         it's not meant to be used except for special cases where response types
         cannot be guess using more straightforward methods."""
@@ -98,7 +99,7 @@ class ResponseTypes(object):
             return self.from_mimetype('text')
 
     def from_args(self, headers=None, url=None, filename=None, body=None):
-        """Guess the most appropiate Response class based on the given arguments"""
+        """Guess the most appropriate Response class based on the given arguments"""
         cls = Response
         if headers is not None:
             cls = self.from_headers(headers)

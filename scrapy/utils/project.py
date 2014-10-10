@@ -1,10 +1,12 @@
 import os
-from os.path import join, dirname, abspath, isabs, exists
-import cPickle as pickle
+from six.moves import cPickle as pickle
 import warnings
 
+from importlib import import_module
+from os.path import join, dirname, abspath, isabs, exists
+
 from scrapy.utils.conf import closest_scrapy_cfg, get_config, init_env
-from scrapy.settings import CrawlerSettings
+from scrapy.settings import Settings
 from scrapy.exceptions import NotConfigured
 
 ENVVAR = 'SCRAPY_SETTINGS_MODULE'
@@ -14,7 +16,7 @@ def inside_project():
     scrapy_module = os.environ.get('SCRAPY_SETTINGS_MODULE')
     if scrapy_module is not None:
         try:
-            __import__(scrapy_module)
+            import_module(scrapy_module)
         except ImportError as exc:
             warnings.warn("Cannot import scrapy settings module %s: %s" % (scrapy_module, exc))
         else:
@@ -51,20 +53,21 @@ def get_project_settings():
     if ENVVAR not in os.environ:
         project = os.environ.get('SCRAPY_PROJECT', 'default')
         init_env(project)
+
+    settings = Settings()
     settings_module_path = os.environ.get(ENVVAR)
     if settings_module_path:
-        settings_module = __import__(settings_module_path, {}, {}, [''])
-    else:
-        settings_module = None
-    settings = CrawlerSettings(settings_module)
+        settings.setmodule(settings_module_path, priority='project')
 
     # XXX: remove this hack
     pickled_settings = os.environ.get("SCRAPY_PICKLED_SETTINGS_TO_OVERRIDE")
-    settings.overrides = pickle.loads(pickled_settings) if pickled_settings else {}
+    if pickled_settings:
+        settings.setdict(pickle.loads(pickled_settings), priority='project')
 
     # XXX: deprecate and remove this functionality
-    for k, v in os.environ.items():
-        if k.startswith('SCRAPY_'):
-            settings.overrides[k[7:]] = v
+    env_overrides = {k[7:]: v for k, v in os.environ.items() if
+                     k.startswith('SCRAPY_')}
+    if env_overrides:
+        settings.setdict(env_overrides, priority='project')
 
     return settings

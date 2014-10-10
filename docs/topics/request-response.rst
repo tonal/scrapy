@@ -1,14 +1,14 @@
 .. _topics-request-response:
 
 ======================
-Requests and Responses 
+Requests and Responses
 ======================
 
 .. module:: scrapy.http
    :synopsis: Request and Response classes
 
 Scrapy uses :class:`Request` and :class:`Response` objects for crawling web
-sites. 
+sites.
 
 Typically, :class:`Request` objects are generated in the spiders and pass
 across the system until they reach the Downloader, which executes the request
@@ -24,14 +24,23 @@ below in :ref:`topics-request-response-ref-request-subclasses` and
 Request objects
 ===============
 
-.. class:: Request(url[, method='GET', body, headers, cookies, meta, encoding='utf-8', priority=0, dont_filter=False, callback, errback])
+.. class:: Request(url[, callback, method='GET', headers, body, cookies, meta, encoding='utf-8', priority=0, dont_filter=False, errback])
 
     A :class:`Request` object represents an HTTP request, which is usually
     generated in the Spider and executed by the Downloader, and thus generating
     a :class:`Response`.
-    
+
     :param url: the URL of this request
     :type url: string
+
+    :param callback: the function that will be called with the response of this
+       request (once its downloaded) as its first parameter. For more information
+       see :ref:`topics-request-response-ref-request-callback-arguments` below.
+       If a Request doesn't specify a callback, the spider's
+       :meth:`~scrapy.spider.Spider.parse` method will be used.
+       Note that if exceptions are raised during processing, errback is called instead.
+
+    :type callback: callable
 
     :param method: the HTTP method of this request. Defaults to ``'GET'``.
     :type method: string
@@ -42,13 +51,14 @@ Request objects
 
     :param body: the request body. If a ``unicode`` is passed, then it's encoded to
       ``str`` using the `encoding` passed (which defaults to ``utf-8``). If
-      ``body`` is not given,, an empty string is stored. Regardless of the
-      type of this argument, the final value stored will be a ``str``` (never
+      ``body`` is not given, an empty string is stored. Regardless of the
+      type of this argument, the final value stored will be a ``str`` (never
       ``unicode`` or ``None``).
     :type body: str or unicode
 
     :param headers: the headers of this request. The dict values can be strings
-       (for single valued headers) or lists (for multi-valued headers).
+       (for single valued headers) or lists (for multi-valued headers). If
+       ``None`` is passed as value, the HTTP header will not be sent at all.
     :type headers: dict
 
     :param cookies: the request cookies. These can be sent in two forms.
@@ -66,16 +76,16 @@ Request objects
                                                     'path': '/currency'}])
 
         The latter form allows for customizing the ``domain`` and ``path``
-        attributes of the cookie. These is only useful if the cookies are saved
+        attributes of the cookie. This is only useful if the cookies are saved
         for later requests.
 
         When some site returns cookies (in a response) those are stored in the
         cookies for that domain and will be sent again in future requests. That's
         the typical behaviour of any regular web browser. However, if, for some
         reason, you want to avoid merging with existing cookies you can instruct
-        Scrapy to do so by setting the ``dont_merge_cookies`` key in the
-        :attr:`Request.meta`. 
-      
+        Scrapy to do so by setting the ``dont_merge_cookies`` key to True in the
+        :attr:`Request.meta`.
+
         Example of request without merging cookies::
 
             request_with_cookies = Request(url="http://www.example.com",
@@ -92,7 +102,8 @@ Request objects
 
     :param priority: the priority of this request (defaults to ``0``).
        The priority is used by the scheduler to define the order used to process
-       requests.
+       requests.  Requests with a higher priority value will execute earlier.
+       Negative values are allowed in order to indicate relatively low-priority.
     :type priority: int
 
     :param dont_filter: indicates that this request should not be filtered by
@@ -101,20 +112,11 @@ Request objects
        care, or you will get into crawling loops. Default to ``False``.
     :type dont_filter: boolean
 
-    :param callback: the function that will be called with the response of this
-       request (once its downloaded) as its first parameter. For more information
-       see :ref:`topics-request-response-ref-request-callback-arguments` below.
-       If a Request doesn't specify a callback, the spider's
-       :meth:`~scrapy.spider.BaseSpider.parse` method will be used.
-    :type callback: callable
-
     :param errback: a function that will be called if any exception was
        raised while processing the request. This includes pages that failed
        with 404 HTTP errors and such. It receives a `Twisted Failure`_ instance
        as first parameter.
     :type errback: callable
-
-    .. _Twisted Failure: http://twistedmatrix.com/documents/8.2.0/api/twisted.python.failure.Failure.html
 
     .. attribute:: Request.url
 
@@ -177,17 +179,17 @@ Passing additional data to callback functions
 
 The callback of a request is a function that will be called when the response
 of that request is downloaded. The callback function will be called with the
-downloaded :class:`Response` object as its first argument. 
+downloaded :class:`Response` object as its first argument.
 
 Example::
 
     def parse_page1(self, response):
-        return Request("http://www.example.com/some_page.html", 
-                          callback=self.parse_page2)
+        return scrapy.Request("http://www.example.com/some_page.html",
+                              callback=self.parse_page2)
 
     def parse_page2(self, response):
         # this would log http://www.example.com/some_page.html
-        self.log("Visited %s" % response.url) 
+        self.log("Visited %s" % response.url)
 
 In some cases you may be interested in passing arguments to those callback
 functions so you can receive the arguments later, in the second callback. You
@@ -199,8 +201,8 @@ different fields from different pages::
     def parse_page1(self, response):
         item = MyItem()
         item['main_url'] = response.url
-        request = Request("http://www.example.com/some_page.html", 
-                          callback=self.parse_page2)
+        request = scrapy.Request("http://www.example.com/some_page.html",
+                                 callback=self.parse_page2)
         request.meta['item'] = item
         return request
 
@@ -225,6 +227,15 @@ Those are:
 * ``dont_merge_cookies`` (see ``cookies`` parameter of :class:`Request` constructor)
 * :reqmeta:`cookiejar`
 * :reqmeta:`redirect_urls`
+* :reqmeta:`bindaddress`
+* :reqmeta:`dont_obey_robotstxt`
+
+.. reqmeta:: bindaddress
+
+bindaddress
+-----------
+
+The IP of the outgoing IP address to use for the performing the request.
 
 .. _topics-request-response-ref-request-subclasses:
 
@@ -257,7 +268,7 @@ fields with form data from :class:`Response` objects.
     The :class:`FormRequest` objects support the following class method in
     addition to the standard :class:`Request` methods:
 
-    .. classmethod:: FormRequest.from_response(response, [formname=None, formnumber=0, formdata=None, formxpath=None, dont_click=False, ...])
+    .. classmethod:: FormRequest.from_response(response, [formname=None, formnumber=0, formdata=None, formxpath=None, clickdata=None, dont_click=False, ...])
 
        Returns a new :class:`FormRequest` object with its form field values
        pre-populated with those found in the HTML ``<form>`` element contained
@@ -294,6 +305,13 @@ fields with form data from :class:`Response` objects.
           overridden by the one passed in this parameter.
        :type formdata: dict
 
+       :param clickdata: attributes to lookup the control clicked. If it's not
+         given, the form data will be submitted simulating a click on the
+         first clickable element. In addition to html attributes, the control
+         can be identified by its zero-based index relative to other
+         submittable inputs inside the form, via the ``nr`` attribute.
+       :type clickdata: dict
+
        :param dont_click: If True, the form data will be submitted without
          clicking in any element.
        :type dont_click: boolean
@@ -317,8 +335,8 @@ If you want to simulate a HTML Form POST in your spider and send a couple of
 key-value fields, you can return a :class:`FormRequest` object (from your
 spider) like this::
 
-   return [FormRequest(url="http://www.example.com/post/action", 
-                       formdata={'name': 'John Doe', age: '27'},
+   return [FormRequest(url="http://www.example.com/post/action",
+                       formdata={'name': 'John Doe', 'age': '27'},
                        callback=self.after_post)]
 
 .. _topics-request-response-ref-request-userlogin:
@@ -333,21 +351,26 @@ automatically pre-populated and only override a couple of them, such as the
 user name and password. You can use the :meth:`FormRequest.from_response`
 method for this job. Here's an example spider which uses it::
 
-    class LoginSpider(BaseSpider):
+
+    import scrapy
+
+    class LoginSpider(scrapy.Spider):
         name = 'example.com'
         start_urls = ['http://www.example.com/users/login.php']
 
         def parse(self, response):
-            return [FormRequest.from_response(response,
-                        formdata={'username': 'john', 'password': 'secret'},
-                        callback=self.after_login)]
+            return scrapy.FormRequest.from_response(
+                response,
+                formdata={'username': 'john', 'password': 'secret'},
+                callback=self.after_login
+            )
 
-        def after_login(self, response): 
+        def after_login(self, response):
             # check login succeed before going on
             if "authentication failed" in response.body:
                 self.log("Login failed", level=log.ERROR)
                 return
-            
+
             # continue scraping with authenticated session...
 
 
@@ -358,7 +381,7 @@ Response objects
 
     A :class:`Response` object represents an HTTP response, which is usually
     downloaded (by the Downloader) and fed to the Spiders for processing.
-    
+
     :param url: the URL of this response
     :type url: string
 
@@ -386,7 +409,7 @@ Response objects
 
     .. attribute:: Response.url
 
-        A string containing the URL of the response. 
+        A string containing the URL of the response.
 
         This attribute is read-only. To change the URL of a Response use
         :meth:`replace`.
@@ -402,7 +425,7 @@ Response objects
 
     .. attribute:: Response.body
 
-        A str containing the body of this Response. Keep in mind that Reponse.body
+        A str containing the body of this Response. Keep in mind that Response.body
         is always a str. If you want the unicode version use
         :meth:`TextResponse.body_as_unicode` (only available in
         :class:`TextResponse` and subclasses).
@@ -423,7 +446,7 @@ Response objects
 
         - Response.request.url doesn't always equal Response.url
 
-        - This attribute is only available in the spider code, and in the 
+        - This attribute is only available in the spider code, and in the
           :ref:`Spider Middlewares <topics-spider-middleware>`, but not in
           Downloader Middlewares (although you have the Request available there by
           other means) and handlers of the :signal:`response_downloaded` signal.
@@ -450,12 +473,11 @@ Response objects
 
        Returns a new Response which is a copy of this Response.
 
-    .. method:: Response.replace([url, status, headers, body, meta, flags, cls])
+    .. method:: Response.replace([url, status, headers, body, request, flags, cls])
 
        Returns a Response object with the same members, except for those members
        given new values by whichever keyword arguments are specified. The
-       attribute :attr:`Response.meta` is copied by default (unless a new value
-       is given in the ``meta`` argument).
+       attribute :attr:`Response.meta` is copied by default.
 
 .. _topics-request-response-ref-response-subclasses:
 
@@ -506,23 +528,41 @@ TextResponse objects
        4. the encoding inferred by looking at the response body. This is the more
           fragile method but also the last one tried.
 
+    .. attribute:: TextResponse.selector
+
+        A :class:`~scrapy.selector.Selector` instance using the response as
+        target. The selector is lazily instantiated on first access.
+
     :class:`TextResponse` objects support the following methods in addition to
     the standard :class:`Response` ones:
 
     .. method:: TextResponse.body_as_unicode()
- 
+
         Returns the body of the response as unicode. This is equivalent to::
- 
+
             response.body.decode(response.encoding)
- 
+
         But **not** equivalent to::
-        
+
             unicode(response.body)
-        
-        Since, in the latter case, you would be using you system default encoding
-        (typically `ascii`) to convert the body to uniode, instead of the response
+
+        Since, in the latter case, you would be using the system default encoding
+        (typically `ascii`) to convert the body to unicode, instead of the response
         encoding.
- 
+
+    .. method:: TextResponse.xpath(query)
+
+        A shortcut to ``TextResponse.selector.xpath(query)``::
+
+            response.xpath('//p')
+
+    .. method:: TextResponse.css(query)
+
+        A shortcut to ``TextResponse.selector.css(query)``::
+
+            response.css('p')
+
+
 HtmlResponse objects
 --------------------
 
@@ -543,3 +583,4 @@ XmlResponse objects
     adds encoding auto-discovering support by looking into the XML declaration
     line.  See :attr:`TextResponse.encoding`.
 
+.. _Twisted Failure: http://twistedmatrix.com/documents/current/api/twisted.python.failure.Failure.html

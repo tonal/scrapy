@@ -24,12 +24,13 @@ class Command(ScrapyCommand):
     def run(self, args, opts):
         if len(args) != 1:
             raise UsageError()
-        editor = self.crawler.settings['EDITOR']
+
+        editor = self.settings['EDITOR']
         try:
-            spider = self.crawler.spiders.create(args[0])
+            spidercls = self.crawler_process.spiders.load(args[0])
         except KeyError:
             return self._err("Spider not found: %s" % args[0])
 
-        sfile = sys.modules[spider.__module__].__file__
+        sfile = sys.modules[spidercls.__module__].__file__
         sfile = sfile.replace('.pyc', '.py')
         self.exitcode = os.system('%s "%s"' % (editor, sfile))

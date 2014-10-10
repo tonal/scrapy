@@ -18,22 +18,24 @@ About HTTP errors to consider:
   indicate server overload, which would be something we want to retry
 """
 
-from twisted.internet.error import TimeoutError as ServerTimeoutError, DNSLookupError, \
-                                   ConnectionRefusedError, ConnectionDone, ConnectError, \
-                                   ConnectionLost, TCPTimedOutError
-from twisted.internet.defer import TimeoutError as UserTimeoutError
+from twisted.internet import defer
+from twisted.internet.error import TimeoutError, DNSLookupError, \
+        ConnectionRefusedError, ConnectionDone, ConnectError, \
+        ConnectionLost, TCPTimedOutError
 
 from scrapy import log
 from scrapy.exceptions import NotConfigured
 from scrapy.utils.response import response_status_message
+from scrapy.xlib.tx import ResponseFailed
+
 
 class RetryMiddleware(object):
 
     # IOError is raised by the HttpCompression middleware when trying to
     # decompress an empty response
-    EXCEPTIONS_TO_RETRY = (ServerTimeoutError, UserTimeoutError, DNSLookupError,
+    EXCEPTIONS_TO_RETRY = (defer.TimeoutError, TimeoutError, DNSLookupError,
                            ConnectionRefusedError, ConnectionDone, ConnectError,
-                           ConnectionLost, TCPTimedOutError,
+                           ConnectionLost, TCPTimedOutError, ResponseFailed,
                            IOError)
 
     def __init__(self, settings):
@@ -48,7 +50,7 @@ class RetryMiddleware(object):
         return cls(crawler.settings)
 
     def process_response(self, request, response, spider):
-        if 'dont_retry' in request.meta:
+        if request.meta.get('dont_retry', False):
             return response
         if response.status in self.retry_http_codes:
             reason = response_status_message(response.status)
@@ -57,8 +59,8 @@ class RetryMiddleware(object):
 
     def process_exception(self, request, exception, spider):
         if isinstance(exception, self.EXCEPTIONS_TO_RETRY) \
-                and 'dont_retry' not in request.meta:
-            return self._retry(request, exception, spider)
+                and not request.meta.get('dont_retry', False):
+             return self._retry(request, exception, spider)
 
     def _retry(self, request, reason, spider):
         retries = request.meta.get('retry_times', 0) + 1

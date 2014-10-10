@@ -9,7 +9,7 @@ import copy
 
 from scrapy.http import Request, HtmlResponse
 from scrapy.utils.spider import iterate_spider_output
-from scrapy.spider import BaseSpider
+from scrapy.spider import Spider
 
 def identity(x):
     return x
@@ -27,7 +27,7 @@ class Rule(object):
         else:
             self.follow = follow
 
-class CrawlSpider(BaseSpider):
+class CrawlSpider(Spider):
 
     rules = ()
 
@@ -52,8 +52,8 @@ class CrawlSpider(BaseSpider):
             links = [l for l in rule.link_extractor.extract_links(response) if l not in seen]
             if links and rule.process_links:
                 links = rule.process_links(links)
-            seen = seen.union(links)
             for link in links:
+                seen.add(link)
                 r = Request(url=link.url, callback=self._response_downloaded)
                 r.meta.update(rule=n, link_text=link.text)
                 yield rule.process_request(r)
@@ -85,6 +85,13 @@ class CrawlSpider(BaseSpider):
             rule.callback = get_method(rule.callback)
             rule.process_links = get_method(rule.process_links)
             rule.process_request = get_method(rule.process_request)
+
+    @classmethod
+    def from_crawler(cls, crawler, *args, **kwargs):
+        spider = super(CrawlSpider, cls).from_crawler(crawler, *args, **kwargs)
+        spider._follow_links = crawler.settings.getbool(
+            'CRAWLSPIDER_FOLLOW_LINKS', True)
+        return spider
 
     def set_crawler(self, crawler):
         super(CrawlSpider, self).set_crawler(crawler)

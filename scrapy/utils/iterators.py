@@ -1,15 +1,18 @@
-import re, csv
-from cStringIO import StringIO
+import re, csv, six
 
-from scrapy.http import TextResponse
-from scrapy.selector import XmlXPathSelector
+try:
+    from cStringIO import StringIO as BytesIO
+except ImportError:
+    from io import BytesIO
+
+from scrapy.http import TextResponse, Response
+from scrapy.selector import Selector
 from scrapy import log
 from scrapy.utils.python import re_rsearch, str_to_unicode
-from scrapy.utils.response import body_or_str
 
 
 def xmliter(obj, nodename):
-    """Return a iterator of XPathSelector's over all nodes of a XML document,
+    """Return a iterator of Selector's over all nodes of a XML document,
        given tha name of the node to iterate. Useful for parsing XML feeds.
 
     obj can be:
@@ -19,7 +22,7 @@ def xmliter(obj, nodename):
     """
     HEADER_START_RE = re.compile(r'^(.*?)<\s*%s(?:\s|>)' % nodename, re.S)
     HEADER_END_RE = re.compile(r'<\s*/%s\s*>' % nodename, re.S)
-    text = body_or_str(obj)
+    text = _body_or_str(obj)
 
     header_start = re.search(HEADER_START_RE, text)
     header_start = header_start.group(1).strip() if header_start else ''
@@ -29,7 +32,7 @@ def xmliter(obj, nodename):
     r = re.compile(r"<%s[\s>].*?</%s>" % (nodename, nodename), re.DOTALL)
     for match in r.finditer(text):
         nodetext = header_start + match.group() + header_end
-        yield XmlXPathSelector(text=nodetext).select('//' + nodename)[0]
+        yield Selector(text=nodetext, type='xml').xpath('//' + nodename)[0]
 
 
 def csviter(obj, delimiter=None, headers=None, encoding=None):
@@ -47,9 +50,9 @@ def csviter(obj, delimiter=None, headers=None, encoding=None):
     """
     encoding = obj.encoding if isinstance(obj, TextResponse) else encoding or 'utf-8'
     def _getrow(csv_r):
-        return [str_to_unicode(field, encoding) for field in csv_r.next()]
+        return [str_to_unicode(field, encoding) for field in next(csv_r)]
 
-    lines = StringIO(body_or_str(obj, unicode=False))
+    lines = BytesIO(_body_or_str(obj, unicode=False))
     if delimiter:
         csv_r = csv.reader(lines, delimiter=delimiter)
     else:
@@ -67,3 +70,18 @@ def csviter(obj, delimiter=None, headers=None, encoding=None):
         else:
             yield dict(zip(headers, row))
 
+
+def _body_or_str(obj, unicode=True):
+    assert isinstance(obj, (Response, six.string_types)), \
+        "obj must be Response or basestring, not %s" % type(obj).__name__
+    if isinstance(obj, Response):
+        if not unicode:
+            return obj.body
+        elif isinstance(obj, TextResponse):
+            return obj.body_as_unicode()
+        else:
+            return obj.body.decode('utf-8')
+    elif isinstance(obj, six.text_type):
+        return obj if unicode else obj.encode('utf-8')
+    else:
+        return obj.decode('utf-8') if unicode else obj
